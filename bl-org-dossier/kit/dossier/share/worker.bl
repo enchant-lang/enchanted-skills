@@ -1,0 +1,86 @@
+; Owner-side publication jobs; retained intent and receipts survive HTTP navigation.
+(ns dossier.share.worker
+  (:require [bl.json :as json] [dossier.share.model :as model]
+            [dossier.share.export :as export] [dossier.share.archive :as archive]))
+(def account-root (Path/expand "~/.local/state/dossier-share"))
+(def config-path (Path/expand "~/.config/dossier-share/config.json"))
+(def jobs (atom {}))
+(defn configured? [] (File/regular? config-path))
+(defn config [] (json/decode (File/read! config-path)))
+(defn state-path [document] (str account-root "/" (model/digest (Path/expand document)) ".json"))
+(defn load-state [document] (try (json/decode (File/read! (state-path document))) (catch _ nil)))
+(defn save-state! [document state]
+  (File/mkdir_p! account-root) (File/chmod! account-root 448)
+  (let [path (state-path document) tmp (str path ".tmp")]
+    (File/write! tmp (json/encode state)) (File/chmod! tmp 384) (File/rename! tmp path)) state)
+(defn call-receiver! [request tar]
+  (let [c (config)
+        args ["180" "sh" "-c" "exec \"$@\" < \"$0\"" (or tar "/dev/null")
+              "ssh" "-F" "/dev/null" "-i" (get c "identity") "-o" "IdentitiesOnly=yes"
+              "-o" "BatchMode=yes" "-o" "StrictHostKeyChecking=yes" "-o" "ConnectTimeout=15"
+              "-o" (str "UserKnownHostsFile=" (get c "knownHosts"))
+              (str (get c "user") "@" (get c "host")) (json/encode request)]
+        [out code] (System/cmd "timeout" (to-list args) (list (tuple :stderr_to_stdout false)))
+        result (try (json/decode (last (filter #(starts-with? (trim %) "{") (String/split out "\n")))) (catch _ nil))]
+    (when-not (and (= code 0) (= true (get result "ok"))) (model/refuse "Le serveur n'a pas confirmé la publication. Réessayez."))
+    result))
+(defn inspect [document]
+  (let [state (load-state document)
+        interrupted (and (not (contains? @jobs document)) (contains? #{"preparing" "publishing"} (get state "phase")))]
+    {:configured (configured?) :busy (contains? #{"preparing" "publishing"} (get @jobs document))
+     :phase (if interrupted "interrupted" (get @jobs document "idle")) :url (get state "url") :operation (get state "operation")
+     :publishedAt (get state "publishedAt") :error (or (get state "error") (when interrupted "Publication interrompue. Réessayez pour la terminer."))
+     :revoked (get state "revoked" false)}))
+(defn- verify-public! [url revision]
+  (let [[out code] (System/cmd "curl" (list "--silent" "--head" "--fail" "--max-time" "20"
+        "--connect-timeout" "5" "--max-redirs" "0" "--proto" "=https" "--output" "/dev/null"
+        "--write-out" "%{http_code}" "--url" (str url "r/" revision "/")))]
+    (when-not (and (= code 0) (= "200" out))
+      (model/refuse "Copie reçue, mais son accès public n'est pas confirmé. Réessayez."))))
+(defn publish! [document options]
+  (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
+    (fn []
+      (when-not (contains? #{"preparing" "publishing"} (get @jobs document))
+        (let [prior (load-state document)
+              token (or (get prior "token") (model/random-id))
+              state (merge prior {"token" token "id" (or (get prior "id") (model/random-id))
+                                  "operation" (model/random-id) "phase" "preparing" "error" nil})
+              text (File/read! document)]
+          (save-state! document state)
+          (swap! jobs assoc document "preparing")
+          (spawn (fn []
+            (global/trans (tuple :dossier/share-producer (erlang/self))
+              (fn []
+                (let [dir (str account-root "/jobs/" (get state "operation")) tar (str dir ".tar")]
+                  (try
+                    (File/mkdir_p! (Path/dirname dir))
+                    (let [observed (call-receiver! {"action" "status" "id" (get state "id") "tokenHash" (model/digest token)
+                                                   "operation" (get state "operation")} nil)
+                          sequence (get-in observed ["grant" "sequence"] 0)
+                          result (export/export! text dir (options))
+                          revision (:revision result)
+                          request {"action" "publish" "id" (get state "id") "tokenHash" (model/digest token)
+                                   "operation" (get state "operation") "revision" revision
+                                   "expected" sequence}]
+                      (archive/write-tar! dir tar)
+                      (save-state! document (assoc state "phase" "publishing"))
+                      (swap! jobs assoc document "publishing")
+                      (let [reply (call-receiver! request tar) grant (get reply "grant")
+                            url (str (get (config) "origin") "/s/" token "/")]
+                        (verify-public! url revision)
+                        (save-state! document (merge state grant {"token" token "url" url "phase" "idle" "error" nil}))
+                        (swap! jobs assoc document "idle")))
+                    (catch e
+                      (save-state! document (assoc state "phase" "failed" "error" (str (ex-message e))))
+                      (swap! jobs assoc document "failed"))
+                    (finally (File/rm_rf dir) (File/rm tar))))))))))
+      (inspect document))))
+(defn revoke! [document]
+  (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
+    (fn []
+      (when (contains? #{"preparing" "publishing"} (get @jobs document)) (model/refuse "Attendez la fin de la publication."))
+      (let [state (load-state document)
+            request {"action" "revoke" "id" (get state "id") "tokenHash" (model/digest (get state "token"))
+                     "operation" (model/random-id) "expected" (get state "sequence" 0)}
+            reply (call-receiver! request nil)]
+        (save-state! document (merge state (get reply "grant"))) (inspect document)))))

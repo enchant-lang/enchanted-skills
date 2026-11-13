@@ -182,6 +182,7 @@
   "Answer controls for block `a` (its attrs map). `opts` is [[value label] …].
    Posting writes :answer/:note/:at back into the block header."
   [a opts prompt]
+  (when-not (= true (erlang/get :dossier/published))
   (let [ans (:answer a)]
     [:form {:class (str "fb" (if ans " answered picked" "")) :data-id (:id a)}
      [:div.fb-prompt prompt]
@@ -191,7 +192,7 @@
      [:textarea {:name "note" :rows "2" :placeholder (or (:note-placeholder a) (tr "Anything Claude should know (optional)"))} (or (:note a) "")]
      [:div.fb-row
       [:button.send {:type "submit"} (or (:submit-label a) (if ans (tr "Update") (tr "Send to Claude")))]
-      [:span.fb-state (if ans (str (tr "✓ answered ") (or (:at a) "")) (tr "awaiting you"))]]]))
+      [:span.fb-state (if ans (str (tr "✓ answered ") (or (:at a) "")) (tr "awaiting you"))]]])))
 
 ; ─── prose components ──────────────────────────────────────────────────────
 

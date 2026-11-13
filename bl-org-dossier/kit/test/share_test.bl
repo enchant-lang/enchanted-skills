@@ -1,0 +1,70 @@
+(ns dossier.share.test
+  (:require [dossier.share.model :as m] [dossier.share.export :as export]
+            [dossier.org :as org] [dossier.page :as page] [live.hiccup :as h]))
+(deftest share-capabilities-and-paths-are-not-filenames
+  (let [t (m/random-id)] (is (m/token? t)) (is (= 64 (count (m/digest t)))))
+  (doseq [p ["../secret" "/etc/passwd" "a//b" "a/../b" "a%2Fb" "a\\b"]] (is (not (m/relative? p))))
+  (is (= "views?view=finance-cautions" (m/route-key "views" "view=finance-cautions&mode=client")))
+  (is (nil? (m/route-key "views" "view=../secret"))))
+(deftest publication-retries-and-conflicts-preserve-ownership
+  (let [r {"id" "doc" "operation" "first" "action" "publish" "revision" (m/digest "a") "expected" 0}
+        a (m/advance nil "othman" r)]
+    (is (= a (m/advance a "othman" r)))
+    (is (= 1 (get a "sequence")))
+    (is (try (m/advance a "other" r) false (catch _ true)))
+    (is (try (m/advance a "othman" (assoc r "operation" "second")) false (catch _ true)))
+    (is (get (m/advance a "othman" (assoc r "operation" "revoke" "action" "revoke" "expected" 1)) "revoked"))))
+(deftest publication-removes-internal-content-and-writes
+  (let [doc (org/read-doc (join "\n" ["#+title: Public" "#+client_hide: ask :internal:" "* Public"
+               "Hello." "#+begin_screen :id x :title Screen :answer fine :note SECRET_NOTE"
+               "bar Public screen" "#+end_screen" "* Private :internal:" "SECRET_BODY"
+               "#+begin_src beam-lisp" "SECRET_CODE" "#+end_src"]))
+        public (export/public-doc doc)
+        html (h/hiccup->html (page/page-h public "" ""))]
+    (is (includes? html "data-published"))
+    (is (not (includes? html "SECRET")))
+    (is (not (includes? html "form")))
+    (is (not (includes? html "source .bl.org")))
+    (is (not (includes? html "review.js")))))
+
+(deftest published-styles-and-preview-links-stay-inside-the-revision
+  (let [tree [:div [:style "@font-face{src:url(/fonts/regular.ttf)}"]
+               [:iframe {:src "/views?view=bureaux" :data-review-kind "block"}]
+               [:div {:data-claims-src "/views"}]]
+        html (h/hiccup->html (export/rewrite-tree tree))]
+    (is (includes? html "url(fonts/regular.ttf)"))
+    (is (includes? html "src=\"views?view=bureaux\""))
+    (is (includes? html "data-claims-src=\"views\""))
+    (is (not (includes? html "data-review-")))
+    (is (= ["/fonts/regular.ttf" "/views?view=bureaux" "/views"] (vec (export/local-urls tree))))))
+
+(deftest revoked-publications-can-be-republished-with-the-same-link
+  (let [a (m/advance nil "owner" {"id" "x" "operation" "a" "action" "publish" "revision" (m/digest "a") "expected" 0})
+        b (m/advance a "owner" {"id" "x" "operation" "b" "action" "revoke" "expected" 1})
+        c (m/advance b "owner" {"id" "x" "operation" "c" "action" "publish" "revision" (m/digest "c") "expected" 2})]
+    (is (= 3 (get c "sequence")))
+    (is (not (get c "revoked")))
+    (is (= [(m/digest "c") (m/digest "a")] (get c "revisions")))))
+
+(deftest private-citations-never-publish-a-neighbouring-pdf
+  (let [doc (org/read-doc "#+title: Citation\n#+name: sources\n| id | label | url |\n|---+---+---|\n| S1 | Proposition p. 8 | /context/proposal.pdf#page=8 |\n")
+        public (export/public-doc doc)
+        table (first (filter #(= :table (:t %)) (:nodes public)))
+        link (h/hiccup->html (export/rewrite-tree [:a {:href "/context/proposal.pdf#page=8"} "Proposition p. 8"]))]
+    (is (= "" (last (first (:rows table)))))
+    (is (includes? link "Proposition p. 8"))
+    (is (not (includes? link "href=")))
+    (is (includes? (h/hiccup->html (export/rewrite-tree [:a {:href "/context/public.pdf#page=3"} "Source"] #{"/context/public.pdf"})) "href=\"context/public.pdf#page=3\""))))
+
+(deftest malformed-and-oversized-inventories-are-refused
+  (let [f {"file" "index.html" "type" "text/html; charset=utf-8" "sha256" (m/digest "page") "bytes" 4}
+        base {"version" 1 "routes" {"index.html" f}}]
+    (is (= base (m/manifest! base)))
+    (doseq [bad [(dissoc base "version")
+                 (assoc base "routes" {"private.html" f})
+                 (assoc-in base ["routes" "index.html" "file"] "../private")
+                 (assoc-in base ["routes" "index.html" "sha256"] "bad")
+                 (assoc-in base ["routes" "index.html" "bytes"] (inc m/max-bytes))
+                 (assoc-in base ["routes" "index.html" "type"] "text/html\r\nX: injected")
+                 (assoc base "routes" {"index.html" (assoc f "bytes" m/max-bytes) "app.css" f})]]
+      (is (try (m/manifest! bad) false (catch _ true))))))

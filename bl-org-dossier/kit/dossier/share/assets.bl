@@ -1,0 +1,12 @@
+; Explicit local font directories for standard dossier hosts and their exports.
+(ns dossier.share.assets)
+(defn- paths [name]
+  (filter #(not (blank? %)) (map trim (String/split (or (System/get_env name) "") ","))))
+(defn fonts []
+  (let [dirs (distinct (concat (paths "DOSSIER_FONT_DIRS")
+                              (map #(Path/join (Path/dirname %) "fonts") (paths "DOSSIER_DESIGN_CSS"))))]
+    (into {} (for [dir dirs [pattern mime] [["*.ttf" "font/ttf"] ["*.woff2" "font/woff2"] ["*OFL.txt" "text/plain"]]
+                   p (Path/wildcard (str dir "/" pattern))]
+      [(str "/fonts/" (Path/basename p)) {:path (Path/expand p) :type mime}]))))
+(defn options [kit document]
+  {:kit kit :directory (Path/dirname document) :files (fonts) :previews {} :css ""})

@@ -1,0 +1,90 @@
+; The actual dossier components -> an immutable, finite public artifact.
+(ns dossier.share.export
+  (:require [bl.json :as json] [live.hiccup :as h] [dossier.org :as org]
+            [dossier.page :as page] [dossier.audience :as audience]
+            [dossier.notebook :as notebook] [dossier.share.model :as model]))
+
+(defn- private-citation? [url allowed]
+  (and (string? url) (starts-with? url "/context/")
+       (not (contains? allowed (first (String/split url (Regex/compile! "[?#]")))))))
+(defn public-doc
+  ([doc] (public-doc doc #{}))
+  ([doc allowed]
+  (let [projected (audience/for-client doc)]
+    (-> projected
+        (assoc :comments [] :review-targets {})
+        (update :nodes (fn [nodes] (vec (for [n nodes :when (not (contains? #{:cell :code :props} (:t n)))]
+          (let [n (if (:attrs n) (update n :attrs dissoc :answer :note :at :by :catalog :explorer) n)]
+            (if (= :table (:t n))
+              (update n :rows (fn [rows] (mapv #(mapv (fn [cell] (if (private-citation? cell allowed) "" cell)) %) rows))) n))))))
+        (assoc-in [:meta :locked] "t") (assoc-in [:meta :published] true)
+        (update :imports (fn [docs] (mapv #(public-doc % allowed) docs)))))))
+
+(defn- css-relative [css] (String/replace css (Regex/compile! "([('\\\"])\\/fonts/") "\\1fonts/"))
+(defn- css-urls [css]
+  (map second (Regex/scan (Regex/compile! "url\\(\\s*['\"]?(/[^)'\"\\s]+)") css)))
+(defn local-urls [value]
+  (cond
+    (string? value) (css-urls value)
+    (map? value) (mapcat (fn [[k v]] (if (and (contains? #{:src :href :data-source-start :data-component-catalog :data-claims-src} k)
+                                            (string? v) (starts-with? v "/")) [v] (local-urls v))) value)
+    (or (vector? value) (seq? value) (list? value)) (mapcat local-urls value)
+    :else []))
+(defn rewrite-tree
+  ([tree] (rewrite-tree tree #{}))
+  ([tree allowed]
+  (cond
+    (map? tree) (cond-> (into {} (for [[k v] tree :when (not (starts-with? (name k) "data-review-"))]
+      [k (if (and (contains? #{:src :href :action :data-source-start :data-component-catalog :data-component-explorer :data-claims-src} k)
+                  (string? v) (starts-with? v "/") (not (starts-with? v "//")))
+           (subs v 1) (rewrite-tree v allowed))]))
+      (or (:data-source-inspect tree) (:data-sg-inspect tree)) (assoc :hidden true))
+    (vector? tree) (cond
+                    (private-citation? (when (map? (second tree)) (:href (second tree))) allowed)
+                    [:span.nb-src {:title "Document non joint à cette copie"} (map #(rewrite-tree % allowed) (drop 2 tree))]
+                    (= :style (first tree)) (mapv #(if (string? %) (css-relative %) (rewrite-tree % allowed)) tree)
+                    :else (mapv #(rewrite-tree % allowed) tree))
+    (or (seq? tree) (list? tree)) (map #(rewrite-tree % allowed) tree)
+    :else tree)))
+(defn- kit-file [kit name] (File/read! (Path/join kit name)))
+(defn export!
+  "Capture text and adapter's finite trees/files. Returns a manifest and digest.
+   opts: :kit :directory :css :files {url {:path :type}} :previews {id hiccup}."
+  [text out opts]
+  (let [allowed (set (keys (:files opts)))
+        doc (public-doc (notebook/with-imports (org/read-doc text) (:directory opts)) allowed)
+        kit (:kit opts)
+        _ (erlang/put :dossier/params "mode=client")
+        raw-tree (page/page-h doc (str (kit-file kit "style.css") "\n" (:css opts)
+                                      "\nhtml[data-published] [hidden]{display:none!important}") (kit-file kit "live.js"))
+        urls (remove #(private-citation? % allowed)
+                     (concat (local-urls raw-tree) (mapcat local-urls (vals (:previews opts)))))
+        tree (rewrite-tree raw-tree allowed)
+        previews (into {} (for [[id tree] (:previews opts)] [id (rewrite-tree tree allowed)]))
+        _ (when (and (some #(starts-with? % "/views") urls) (empty? previews))
+            (model/refuse "This dossier needs a connected-preview exporter"))
+        routes (merge {"index.html" {:bytes (str "<!doctype html>" (h/hiccup->html tree)) :type "text/html; charset=utf-8"}}
+                      (into {} (for [[id tree] previews]
+                        [(str "views?view=" id) {:bytes (str "<!doctype html>" (h/hiccup->html tree)) :type "text/html; charset=utf-8"}]))
+                      (into {} (for [[url item] (:files opts)]
+                        [(String/trim_leading url "/") {:bytes (let [b (File/read! (:path item))]
+                          (if (= "text/css" (:type item))
+                            (css-relative (get (:styles opts) (String/trim_leading url "/") b)) b)) :type (:type item)}])))
+        declared (set (keys routes))
+        _ (doseq [url (distinct urls)]
+            (let [relative (first (String/split (subs url 1) "#")) path (first (String/split relative "?"))]
+              (when-not (or (contains? declared relative) (contains? declared path)
+                            (and (= "views" path) (seq previews)))
+                (model/refuse (str "Missing declared public asset: " path)))))
+        _ (File/mkdir_p! (str out "/public"))
+        files (into {} (map-indexed (fn [i [route item]]
+                (let [suffix (get {"text/html; charset=utf-8" "html" "text/plain" "txt" "text/css" "css" "text/javascript" "js"
+                                  "font/ttf" "ttf" "font/woff2" "woff2" "image/png" "png" "image/jpeg" "jpg"
+                                  "image/webp" "webp" "image/svg+xml" "svg" "video/mp4" "mp4" "application/pdf" "pdf"} (:type item))
+                      name (str "file-" i "." suffix) bytes (:bytes item)]
+                  (File/write! (str out "/public/" name) bytes)
+                  [route {"file" name "type" (:type item) "bytes" (erlang/byte_size bytes) "sha256" (model/digest bytes)}]))
+              (sort-by first routes)))
+        manifest (model/manifest! {"version" 1 "title" (get-in doc [:meta :title]) "routes" files})]
+    (File/write! (str out "/manifest.json") (json/encode manifest))
+    {:manifest manifest :revision (model/revision manifest)}))

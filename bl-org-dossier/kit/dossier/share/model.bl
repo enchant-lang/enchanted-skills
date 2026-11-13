@@ -1,0 +1,50 @@
+; Pure publication and route validation. No request can choose a filesystem root.
+(ns dossier.share.model (:require [bl.json :as json]))
+
+(def max-bytes (* 128 1024 1024))
+(def max-files 4096)
+(defn digest [bytes]
+  (String/downcase (Base/encode16 (crypto/hash :sha256 bytes))))
+(defn random-id [] (Base/url_encode64 (crypto/strong_rand_bytes 32) (list (tuple :padding false))))
+(defn hex? [s] (and (string? s) (some? (Regex/run (Regex/compile! "^[a-f0-9]{64}$") s))))
+(defn token? [s] (and (string? s) (some? (Regex/run (Regex/compile! "^[A-Za-z0-9_-]{43}$") s))))
+(defn id? [s] (and (string? s) (some? (Regex/run (Regex/compile! "^[A-Za-z0-9_-]{1,100}$") s))))
+(defn relative? [s]
+  (and (string? s) (< (count s) 400) (not (blank? s))
+       (every? (fn [part] (and (not (contains? #{"" "." ".."} part))
+                              (some? (Regex/run (Regex/compile! "^[A-Za-z0-9_.-]+$") part))))
+               (String/split s "/"))))
+(defn refuse [message] (throw (ex-info message {})))
+(defn manifest! [m]
+  (when-not (and (= 1 (get m "version")) (map? (get m "routes"))
+                (<= 1 (count (get m "routes")) max-files)
+                (get-in m ["routes" "index.html"])) (refuse "Invalid publication inventory"))
+  (doseq [[route f] (get m "routes")]
+    (when-not (and (string? route) (< (count route) 500)
+                  (or (relative? route) (some? (Regex/run (Regex/compile! "^views\\?view=[A-Za-z0-9_-]+$") route)))
+                  (relative? (get f "file")) (hex? (get f "sha256"))
+                  (erlang/is_integer (get f "bytes")) (<= 0 (get f "bytes") max-bytes)
+                  (contains? #{"text/html; charset=utf-8" "text/plain" "text/css" "text/javascript" "image/png" "image/jpeg"
+                               "image/webp" "image/svg+xml" "application/pdf" "video/mp4" "font/ttf" "font/woff2"}
+                             (get f "type"))) (refuse "Invalid publication file")))
+  (when (> (reduce + (map #(get % "bytes") (vals (get m "routes")))) max-bytes)
+    (refuse "Publication exceeds 128 MiB")) m)
+(defn revision [manifest] (digest (json/encode manifest)))
+(defn route-key [path query]
+  (try (if (= path "views")
+    (let [view (get (URI/decode_query (or query "")) "view" "bureaux")]
+      (when (id? view) (str "views?view=" view)))
+    (when (or (= path "") (relative? path)) (if (= path "") "index.html" path))) (catch _ nil)))
+(defn advance [prior owner request]
+  (let [action (get request "action") id (get request "id") rev (get request "revision")
+        expected (get request "expected" 0) seq (get prior "sequence" 0)]
+    (when-not (and (id? id) (id? (get request "operation")) (contains? #{"publish" "revoke"} action)) (refuse "Invalid publication action"))
+    (when (and prior (not= owner (get prior "owner"))) (refuse "Publication belongs to another publisher"))
+    (if (and prior (= (get request "operation") (get prior "operation"))) prior
+      (do
+        (when-not (= expected seq) (refuse "Publication changed; refresh and retry"))
+        (when (and (= action "publish") (not (hex? rev))) (refuse "Invalid artifact revision"))
+        {"version" 1 "id" id "owner" owner "sequence" (inc seq)
+         "operation" (get request "operation") "revision" (or rev (get prior "revision"))
+         "revisions" (vec (distinct (take 10 (cons (or rev (get prior "revision")) (get prior "revisions" [])))))
+         "revoked" (= action "revoke") "publishedAt" (str (DateTime/utc_now))}))))

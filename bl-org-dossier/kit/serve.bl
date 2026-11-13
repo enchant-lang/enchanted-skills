@@ -16,7 +16,8 @@
 (ns serve
   (:require [web] [live.hiccup :as h] [bl.json :as json]
             [dossier.org :as o] [dossier.page :as pg] [dossier.answer :as ans] [dossier.film :as film]
-            [dossier.feedback :as feedback] [dossier.witness :as witness] [dossier.review.http :as review] [dossier.notebook :as nb] [dossier.audience :as audience]))
+            [dossier.feedback :as feedback] [dossier.witness :as witness] [dossier.review.http :as review] [dossier.notebook :as nb] [dossier.audience :as audience]
+            [dossier.share.host :as sharing] [dossier.share.assets :as publication-assets]))
 
 (defn- arg-path []
   (let [a (first (BeamLisp/argv))]
@@ -79,7 +80,18 @@
     doc))
 
 (defn- full-page [conn text]
-  (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js")))))
+  (sharing/decorate
+    (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js"))))
+    conn (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
+
+(defn- publication-options []
+  (publication-assets/options
+    (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit")) doc-path))
+
+(defn- font-route [conn]
+  (when (and (= "get" (web/method conn)) (starts-with? (web/path conn) "/fonts/"))
+    (when-let [file (get (publication-assets/fonts) (web/path conn))]
+      (web/bytes conn (:type file) (File/read! (:path file))))))
 
 (defn- doc-json [conn text]
   {:rev (rev text) :html (join "" (map h/hiccup->html (pg/doc-h (reading conn text))))})
@@ -99,8 +111,11 @@
 
 (defn router [conn]
  (or (client-only conn)
+     (when-not (audience/locked?) (sharing/route conn doc-path publication-options
+       (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
      (when-not (audience/locked?) (review/route conn doc-path))
      (pdf-route conn)
+     (font-route conn)
  (let [match (Regex/run (Regex/compile! "^/witness-media/([A-Za-z0-9_-]+)/(frame-[1-9][0-9]*\\.png)$") (web/path conn))]
   (if match
    (if-let [path (witness/media-path (o/read-doc (File/read! doc-path)) (Path/dirname doc-path) (nth match 1) (nth match 2))]

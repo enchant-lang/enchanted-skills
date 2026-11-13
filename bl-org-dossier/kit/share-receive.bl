@@ -1,0 +1,76 @@
+; Private forced-command receiver. The wrapper holds the OS lock and pins owner/root.
+(ns dossier.share.receive
+  (:require [bl.json :as json] [dossier.share.model :as model] [dossier.share.archive :as archive]))
+(def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
+(def owner (System/fetch_env! "DOSSIER_SHARE_PUBLISHER"))
+(defn read-json [p] (when (File/regular? p) (json/decode (File/read! p))))
+(defn atomic-json! [p v]
+  (let [tmp (str p ".tmp-" (System/pid))]
+    (File/write! tmp (json/encode v)) (File/chmod! tmp 416) (File/rename! tmp p)))
+(defn capacity! []
+  (let [[disk dc] (System/cmd "df" (list "-PB1" root))
+        [used uc] (System/cmd "du" (list "-sb" (str root "/objects")))
+        disk-fields (String/split (last (filter #(not (blank? %)) (String/split disk "\n"))) (Regex/compile! "\\s+") (list (tuple :trim true)))
+        used-fields (String/split used (Regex/compile! "\\s+") (list (tuple :trim true)))]
+    (when-not (and (= dc 0) (= uc 0)
+                  (> (String/to_integer (nth disk-fields 3)) (* 2 1024 1024 1024))
+                  (< (+ (String/to_integer (first used-fields)) model/max-bytes) (* 2 1024 1024 1024)))
+      (model/refuse "Publication capacity exhausted; current links are preserved"))))
+(defn input! [path]
+  (let [fr (erlang/apply :file :open (list path (list :write :raw :binary)))
+        prior (erlang/apply :io :getopts (list :standard_io))]
+    (when-not (= :ok (first fr)) (model/refuse "Cannot stage upload"))
+    (try
+      (erlang/apply :io :setopts (list :standard_io (list (tuple :binary true) (tuple :encoding :latin1))))
+      (loop [n 0]
+        (let [chunk (erlang/apply :io :request (list :standard_io (tuple :get_chars :latin1 "" 65536)))]
+          (cond (= :eof chunk) n
+                (not (string? chunk)) (model/refuse "Upload stream failed")
+                :else (let [total (+ n (erlang/byte_size chunk))]
+                        (when (> total (+ model/max-bytes (* 8 1024 1024))) (model/refuse "Upload too large"))
+                        (when-not (= :ok (erlang/apply :file :write (list (second fr) chunk))) (model/refuse "Upload write failed"))
+                        (recur total)))))
+      (finally (erlang/apply :file :close (list (second fr)))
+               (when (erlang/is_list prior) (erlang/apply :io :setopts (list :standard_io prior)))))))
+(defn receive! [request]
+  (let [hash (get request "tokenHash") id (get request "id") operation (get request "operation")]
+    (when-not (and (model/hex? hash) (model/id? id) (model/id? operation)) (model/refuse "Invalid request identity"))
+    (let [path (str root "/grants/" hash ".json") prior (read-json path)]
+      (when (and prior (not= owner (get prior "owner"))) (model/refuse "Wrong publisher"))
+      (when (and prior (not= id (get prior "id"))) (model/refuse "Wrong publication"))
+      (if (= "status" (get request "action")) {:ok true :grant prior}
+        (let [staging (str root "/staging/" operation) tar (str staging ".tar")
+              action (get request "action")]
+          (try
+            (when (= action "publish")
+              (capacity!)
+              (File/rm_rf staging)
+              (input! tar)
+              (archive/read-tar-safe! tar staging {:max-bytes model/max-bytes :max-entries (+ model/max-files 2) :max-depth 12})
+              (let [manifest (model/manifest! (read-json (str staging "/manifest.json")))
+                    revision (model/revision manifest)
+                    object (str root "/objects/" revision)]
+                (when-not (= revision (get request "revision")) (model/refuse "Artifact digest mismatch"))
+                (doseq [[_ file] (get manifest "routes")]
+                  (let [p (str staging "/public/" (get file "file"))]
+                    (when-not (= (get file "bytes") (Map/get (File/stat! p) :size)) (model/refuse "Artifact file size mismatch"))
+                    (when-not (= (get file "sha256") (archive/sha256-file p)) (model/refuse "Artifact file digest mismatch"))))
+                (let [inventory (archive/walk staging)
+                      allowed (conj (set (map #(str "public/" (get % "file")) (vals (get manifest "routes")))) "manifest.json")]
+                  (doseq [f inventory :when (= :file (:type f))]
+                    (when-not (contains? allowed (:path f)) (model/refuse "Undeclared artifact file"))))
+                (doseq [f (archive/walk staging)]
+                  (File/chmod! (str staging "/" (:path f)) (if (= :dir (:type f)) 488 416)))
+                (File/chmod! staging 488)
+                (if (File/exists? object) (File/rm_rf staging) (File/rename! staging object))))
+            (let [grant (model/advance prior owner request)]
+              (atomic-json! path grant)
+              {:ok true :grant grant})
+            (finally (File/rm_rf staging) (File/rm tar))))))))
+(try
+  (let [original (or (System/get_env "SSH_ORIGINAL_COMMAND") "")
+        _ (when-not (<= 1 (erlang/byte_size original) 8192) (model/refuse "Bounded command required"))
+        request (json/decode original)]
+    (println (json/encode (receive! request))))
+  (catch _ (println (json/encode {:ok false :error "Publication refused; inspect the owner operation locally."}))
+           (System/halt 1)))

@@ -1,0 +1,124 @@
+#+title: Read-only public dossier sharing
+
+* Use
+
+An owner with account publication configuration sees =Partager= in the standard
+=kit/serve.bl= host. The connected Travaux host delegates to the same adapter.
+Opening it creates the first snapshot. Copy its stable link; update explicitly
+after changing the source; =Arrêter le partage= revokes the entire link.
+The sheet observes a running job after closing/reopening. Clipboard denial
+selects the link for manual copying.
+
+The snapshot uses the client's reading, removes answers/comments/source cells
+and reuses the kit's browser controllers. Navigation, graphs and notebook
+calculations work locally. Changes in these controls do not write to Work.
+The stable link opens the current revision. An already open page keeps its
+own revision; =Dernière version= opens the current one.
+
+Private context PDFs are not implicitly attachments. Citation labels remain
+readable without links. A trusted host adapter must explicitly declare a file
+under its public URL to include it. In particular, linking a page of a private
+commercial proposal does not publish its entire PDF.
+
+* Account setup
+
+Private =~/.config/dossier-share/config.json= contains:
+
+#+begin_example
+{"host":"PUBLIC_SERVER_IP","user":"dossier-publish",
+ "identity":"/absolute/private/publication-key",
+ "knownHosts":"/absolute/private/pinned-host-keys",
+ "origin":"https://share.example.com"}
+#+end_example
+
+Use a distinct, newly generated publishing key. Install only its public part
+in the server's forced-command receiver policy. Never copy the private key to
+the public host. Parent directory mode 0700; configuration and key mode 0600.
+The current ORA deployment is administered by the workstation's
+=nix/dossier-share.nix= and =nix/public-host.nix= modules.
+
+=DOSSIER_OWNER= must identify the owner behind Work's trusted root ingress.
+The share adapter independently verifies the loopback TCP peer UID and exact
+address/port tuple. Other local UIDs cannot gain authority by supplying a
+Tailscale header. Same-origin and a per-process CSRF token are required for
+mutations. Direct access by the serving Unix account is also authorized.
+When publication is unconfigured or the viewer is not the owner, the button
+is absent. Client-locked hosts do not expose the publication endpoints.
+
+For product-local fonts, set =DOSSIER_DESIGN_CSS= to the product CSS and
+=DOSSIER_FONT_DIRS= to comma-separated explicit font directories. Adjacent
+=fonts/= directories are also included. TTF/WOFF2 files and OFL notices are
+exported; other neighbouring files are excluded.
+
+* Custom hosts
+
+Require =dossier.share.host=. Delegate =sharing/route= before ordinary routes
+with the fixed document path, an options callback and kit directory. Decorate
+only the author page with =sharing/decorate=. The callback supplies:
+
+#+begin_example
+{:kit "/absolute/kit" :directory "/absolute/document/directory"
+ :css "product CSS"
+ :files {"/app.css" {:path "/absolute/declared/app.css" :type "text/css"}}
+ :previews {"screen-id" actual-rendered-hiccup}
+ :styles {"app.css" "optional frozen replacement CSS"}}
+#+end_example
+
+Use actual product renderers and a finite, declared set of read-only views.
+Do not crawl HTTP or execute document cells. Undeclared dependencies fail
+preparation. The exporter hashes every output and the complete inventory.
+Asset URLs and preview navigation remain within the admitted revision.
+The Travaux adapter is =apps/travaux/src/travaux/publication.bl=.
+
+* Execution and recovery
+
+The browser submits a small action; source paths and destinations are owned
+by the host. The worker persists an operation ID and secret token before
+starting, captures on-disk text, prepares asynchronously, and sends the
+artifact over restricted SSH. It confirms the exact revision over public
+HTTPS before displaying success. Work is not involved in subsequent reads.
+
+One author service should serve a source file. Its producer serializes jobs
+within that process. Intent and receipts live in mode-0600 files under
+=~/.local/state/dossier-share=. A process restart identifies interrupted
+work; retry checks remote state before choosing the expected sequence.
+Closing the browser leaves the operation running while the Work service
+lives. A failed preparation leaves the previous remote revision available.
+There is no independent, auto-resuming publication daemon in this version.
+
+The installed SDK's artifact-job interface accepts a closed set of native
+preparation operations through a pinned coordinator, not arbitrary export
+callbacks. This slice uses the narrow worker above rather than adding an
+executable/argv escape to that interface.
+
+The server holds an OS writer lock, bounds and validates the archive, rejects
+links/traversal/special files, verifies size/digest/inventory, and atomically
+updates the grant. Requests carry expected sequences and idempotency keys.
+The reader checks the current grant on every GET/HEAD, including assets and
+retained revisions. The grant stores the token hash; the raw token stays on
+Work. Public uploads, source endpoints and server-side cell execution are absent.
+
+Admission limits: 128 MiB, 4096 routes, 2 GiB object quota and 2 GiB free-space
+reserve. Ten revision references are retained per grant. Old objects are not
+automatically deleted; capacity refusal preserves existing publications.
+
+* Build and check
+
+The browser feature is =dossier/share/client.bl= with =^:js=. Its generated
+=publication-client/*.mjs= files are checked in so serving needs no compiler
+job. Rebuild with the qualified SDK (currently v2026.9 / f5ee4ce9):
+
+#+begin_src sh
+bash kit/build-publication-client.sh
+bl --cold test -p kit kit/test/share_test.bl
+python3 kit/test/share_protocol_test.py
+#+end_src
+
+Run substantial checks with workstation memory limits. The protocol check
+uses a temporary data root, real native reader/receiver, corrupt and hostile
+archives, conflicting updates, retained revision assets, retries and revoke.
+It never uses account configuration or production data.
+
+Archive support is vendored from Foundry commit =456739a=,
+=src/foundry/support/deployment-tar.bl=, with a namespace-only adaptation.
+Do not create another archive parser; keep this provenance when updating it.

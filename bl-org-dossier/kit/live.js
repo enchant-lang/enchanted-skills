@@ -190,7 +190,7 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
     const state = graphState(g);
     if (button.hasAttribute('data-sg-zoom')) { zoomGraph(g, button.dataset.sgZoom); return; }
     if (button.hasAttribute('data-sg-expand')) { expandGraph(g, !state.expanded); return; }
-    if (button.hasAttribute('data-sg-inspect')) {state.inspect=!state.inspect;state.mode='screen';paintGraph(g);return;}
+    if (button.hasAttribute('data-sg-inspect')) {if(button.hidden)return;state.inspect=!state.inspect;state.mode='screen';paintGraph(g);return;}
     if (button.hasAttribute('data-sg-highlight')) state.highlight = !state.highlight;
     else if (button.hasAttribute('data-sg-mode')) state.mode = state.mode === 'graph' ? 'screen' : 'graph';
     else if (button.hasAttribute('data-sg-reset')) { state.history = [g.dataset.start]; state.mode = 'screen'; }
@@ -345,7 +345,9 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   route(true);
   paintGraphs();
 
-  refresh(false); setInterval(() => refresh(false), 4000);
+  if (!document.documentElement.hasAttribute('data-published')) {
+    refresh(false); setInterval(() => refresh(false), 4000);
+  }
 })();
 
 // Source-hosted screen compositions expose real component roots. No component
@@ -355,7 +357,7 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   const stateOf = g => { const id=g.dataset.sourceId; if(!states.has(id))states.set(id,{history:[],inspect:false,highlight:false,mode:'screen',expanded:false}); return states.get(id); };
   const safeURL = path => { const u=new URL(path,location.href); if(u.origin!==location.origin)throw Error('Screen tools require a same-origin URL'); return u; };
   function expand(g,on){const s=stateOf(g);s.expanded=on;g.classList.toggle('source-expanded',on);const box=g.querySelector('.source-workbench');box.setAttribute('role',on?'dialog':'region');if(on){s.focus=document.activeElement;box.setAttribute('aria-modal','true');box.focus()}else{box.removeAttribute('aria-modal');s.focus?.isConnected&&s.focus.focus()}g.querySelector('[data-source-expand]').setAttribute('aria-pressed',String(on));g.querySelector('[data-source-expand]').dataset.tip=on?'Full screen · Esc to exit':'Full screen';}
-  function inspect(g,on){const s=stateOf(g);s.inspect=on;g.querySelector('[data-source-inspect]').setAttribute('aria-pressed',String(on));g.querySelector('.source-component-info').hidden=true;try{const d=g.querySelector('iframe').contentDocument;d.documentElement.classList.toggle('component-inspecting',on);d.querySelectorAll('.component-hit').forEach(e=>e.classList.remove('component-hit'));}catch{}}
+  function inspect(g,on){if(g.querySelector('[data-source-inspect]').hidden)return;const s=stateOf(g);s.inspect=on;g.querySelector('[data-source-inspect]').setAttribute('aria-pressed',String(on));g.querySelector('.source-component-info').hidden=true;try{const d=g.querySelector('iframe').contentDocument;d.documentElement.classList.toggle('component-inspecting',on);d.querySelectorAll('.component-hit').forEach(e=>e.classList.remove('component-hit'));}catch{}}
   async function describe(g,el,event){
     const id=el.dataset.uiComponent,s=g.classList.contains('screen-source')?stateOf(g):g._componentState,info=g.querySelector('.source-component-info');s.target=id;s.element=el;
     const chain=[];for(let e=el;e;e=e.parentElement){if(e.dataset.uiComponent)chain.unshift(e.dataset.uiComponent);if(e.dataset.uiComposition)chain.unshift(e.dataset.uiComposition);}

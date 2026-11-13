@@ -1,0 +1,51 @@
+; New browser feature stays in Beam Lisp; the ordinary dossier controllers are reused.
+(ns ^:js dossier.share.client)
+(defn- $ [s] (.querySelector js/document (bl->js s)))
+(def root ($ "#dossier-publication"))
+(def state (atom {}))
+(def timer (atom nil))
+(def pending (atom nil))
+(defn- txt! [selector value] (set! (.-textContent ($ selector)) (bl->js value)))
+(defn- paint! []
+  (let [s @state url (get s "url") available (and url (not (get s "revoked"))) busy (or @pending (get s "busy"))]
+    (set! (.-value ($ "#publication-url")) (bl->js (or url "")))
+    (set! (.-hidden ($ "#publication-url")) (not available))
+    (set! (.-disabled ($ "#publication-copy")) (not available))
+    (set! (.-hidden ($ "#publication-visit")) (not available))
+    (set! (.-href ($ "#publication-visit")) (bl->js (or url "#")))
+    (set! (.-hidden ($ "#publication-revoke")) (not available))
+    (set! (.-disabled ($ "#publication-update")) (boolean busy))
+    (set! (.-disabled ($ "#publication-revoke")) (boolean busy))
+    (txt! "#publication-open" (if busy "Publication…" "Partager"))
+    (txt! "#publication-update" (if available "Mettre à jour la copie" "Publier cette version"))
+    (txt! "#publication-status" (or (get s "error")
+      (if busy (if (= "revoke" @pending) "Arrêt du partage…" (if (= "preparing" (get s "phase")) "Préparation de la copie…" "Publication…"))
+        (if available "La copie est disponible." "Aucune copie partagée."))))))
+(declare refresh!)
+(defn- request! [action done]
+  (when-not (and action @pending)
+  (when action (reset! pending action) (swap! state assoc "error" nil) (paint!))
+  (let [init (if action #js {:method "POST" :headers #js {"content-type" "application/json" "x-dossier-csrf" (.-csrf (.-dataset root))}
+                            :body (.stringify js/JSON (bl->js {"action" action}))}
+                       #js {:cache "no-store"})]
+    (-> (js/fetch "publication" init)
+      (.then (fn [r] (.json r)))
+      (.then (fn [j] (when action (reset! pending nil)) (swap! state merge (js->bl j)) (paint!) (done) nil))
+      (.catch (fn [_] (when action (reset! pending nil))
+        (swap! state assoc "error" "Connexion interrompue. Votre copie précédente reste disponible.") (paint!) nil))))))
+(defn refresh! []
+  (request! nil (fn []
+    (when @timer (js/clearTimeout @timer))
+    (when (get @state "busy") (reset! timer (js/setTimeout refresh! 1200))))))
+(when root
+  (.addEventListener ($ "#publication-open") "click" (fn []
+    (set! (.-hidden ($ "#publication-sheet")) false)
+    (request! nil (fn [] (if (and (not (get @state "url")) (not (get @state "busy")))
+      (request! "publish" refresh!) (when (get @state "busy") (refresh!)))))))
+  (.addEventListener ($ "#publication-close") "click" (fn [] (set! (.-hidden ($ "#publication-sheet")) true)))
+  (.addEventListener ($ "#publication-update") "click" (fn [] (request! "publish" refresh!)))
+  (.addEventListener ($ "#publication-revoke") "click" (fn [] (request! "revoke" refresh!)))
+  (.addEventListener ($ "#publication-copy") "click" (fn []
+    (let [input ($ "#publication-url") fallback (fn [] (.select input) (txt! "#publication-status" "Le lien est sélectionné. Vous pouvez le copier."))]
+      (try (-> (.writeText (.-clipboard js/navigator) (.-value input))
+        (.then (fn [] (txt! "#publication-status" "Lien copié."))) (.catch fallback)) (catch _ (fallback)))))))

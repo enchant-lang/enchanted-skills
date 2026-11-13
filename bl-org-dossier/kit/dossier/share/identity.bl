@@ -1,0 +1,24 @@
+; Loopback TCP peer ownership is checked independently of supplied HTTP headers.
+(ns dossier.share.identity (:require [web]))
+(def uid (let [[s code] (System/cmd "id" (list "-u"))] (when (= code 0) (String/to_integer (trim s)))))
+(defn- hex-port [n] (String/upcase (String/pad_leading (erlang/integer_to_binary n 16) 4 "0")))
+(defn peer-uid [c]
+  (let [peer (Plug.Conn/get_peer_data c)
+        port (:port peer) expected (hex-port port)
+        server (hex-port (String/to_integer (or (System/get_env "PORT") "4071")))]
+    (when (= (tuple 127 0 0 1) (:address peer))
+    (some (fn [table]
+      (try (some (fn [line]
+        (let [fields (String/split (trim line) (Regex/compile! "\\s+") (list (tuple :trim true)))
+              local (nth fields 1 "") remote (nth fields 2 "")]
+          (when (and (= local (str "0100007F:" expected)) (= remote (str "0100007F:" server))
+                     (= "01" (nth fields 3 ""))) (String/to_integer (nth fields 7)))))
+        (rest (String/split (File/read! table) "\n"))) (catch _ nil))) ["/proc/net/tcp"]))))
+(defn owner? [c]
+  (let [peer (peer-uid c) configured (System/get_env "DOSSIER_OWNER")]
+    (and (some? peer)
+         (or (= peer uid)
+             (and (= peer 0) (not (blank? configured)) (= configured (web/req-header c "tailscale-user-login")))))))
+(defn same-origin? [c]
+  (let [origin (web/req-header c "origin") host (web/req-header c "host")]
+    (and origin (contains? #{(str "https://" host) (str "http://" host)} origin))))
