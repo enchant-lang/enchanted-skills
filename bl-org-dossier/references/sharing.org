@@ -15,6 +15,13 @@ calculations work locally. Changes in these controls do not write to Work.
 The stable link opens the current revision. An already open page keeps its
 own revision; =Dernière version= opens the current one.
 
+Share captures the selected appearance as well as the document. The browser
+passes its rendered =data-design= value to the private publication endpoint;
+the host resolves it against server-owned choices. CSS, fonts and screen styles
+are captured in the same immutable bundle. Updating a theme requires another
+explicit publication, without regenerating the authored content or changing
+the public host. Light/dark reading preferences remain local to each reader.
+
 Private context PDFs are not implicitly attachments. Citation labels remain
 readable without links. A trusted host adapter must explicitly declare a file
 under its public URL to include it. In particular, linking a page of a private
@@ -53,11 +60,13 @@ exported; other neighbouring files are excluded.
 * Custom hosts
 
 Require =dossier.share.host=. Delegate =sharing/route= before ordinary routes
-with the fixed document path, an options callback and kit directory. Decorate
+with the fixed document path, an options callback and kit directory. The
+callback receives the captured source text as its single argument; it must
+resolve the appearance and render previews from that same text. Decorate
 only the author page with =sharing/decorate=. The callback supplies:
 
 #+begin_example
-{:kit "/absolute/kit" :directory "/absolute/document/directory"
+{:kit "/absolute/kit" :directory "/absolute/document/directory" :design "sober"
  :css "product CSS"
  :files {"/app.css" {:path "/absolute/declared/app.css" :type "text/css"}}
  :previews {"screen-id" actual-rendered-hiccup}
@@ -69,6 +78,11 @@ Do not crawl HTTP or execute document cells. Undeclared dependencies fail
 preparation. The exporter hashes every output and the complete inventory.
 Asset URLs and preview navigation remain within the admitted revision.
 The Travaux adapter is =apps/travaux/src/travaux/publication.bl=.
+Its shared presentation definition is =travaux/presentation.bl=: available
+designs, report styles, per-design screen styles and font directories. Both
+the private host and publication adapter consume it. Project-specific changes
+belong there or in its declared CSS/font assets. The manifest and private
+publication receipt record the resolved design.
 
 * Execution and recovery
 

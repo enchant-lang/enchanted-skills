@@ -1,0 +1,8 @@
+; A presentation is selected from server-owned choices, never a browser path.
+(ns dossier.presentation)
+(defn design [doc requested supported fallback]
+  (let [selected (or (when (and (string? requested) (not (blank? requested))) requested)
+                     (get-in doc [:meta :design]) fallback)]
+    (when (and selected (not (contains? supported selected)))
+      (throw (ex-info "Apparence inconnue pour ce dossier." {})))
+    selected))

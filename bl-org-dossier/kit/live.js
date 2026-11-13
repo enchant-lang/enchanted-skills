@@ -556,7 +556,18 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
     }
   }
 
-  function init(){document.querySelectorAll('.screen-source').forEach(g=>{if(g._sourceBound)return;g._sourceBound=true;const s=stateOf(g),frame=g.querySelector('.source-frame');frame.addEventListener('load',()=>attach(g));if(s.history.length)frame.src=s.history.at(-1);attach(g);expand(g,s.expanded);mode(g,s.mode==='graph');highlight(g,!!s.highlight)})}
+  function syncReading(g,s){
+    const start=safeURL(g.dataset.sourceStart);
+    s.history=s.history.map(path=>{
+      const url=safeURL(path);
+      for(const key of ['mode','design']){
+        const value=start.searchParams.get(key);
+        if(value===null)url.searchParams.delete(key);else url.searchParams.set(key,value);
+      }
+      return url.href;
+    });
+  }
+  function init(){document.querySelectorAll('.screen-source').forEach(g=>{if(g._sourceBound)return;g._sourceBound=true;const s=stateOf(g),frame=g.querySelector('.source-frame');syncReading(g,s);frame.addEventListener('load',()=>attach(g));if(s.history.length)frame.src=s.history.at(-1);attach(g);expand(g,s.expanded);mode(g,s.mode==='graph');highlight(g,!!s.highlight)})}
   document.addEventListener('click',e=>{
     const b=e.target.closest('[data-source-back],[data-source-reset],[data-source-inspect],[data-source-highlight],[data-source-mode],[data-source-expand],[data-source-to],[data-source-zoom]');
     if(!b)return;const g=b.closest('.screen-source');if(!g)return;

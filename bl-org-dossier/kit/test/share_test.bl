@@ -1,6 +1,7 @@
 (ns dossier.share.test
   (:require [dossier.share.model :as m] [dossier.share.export :as export]
-            [dossier.org :as org] [dossier.page :as page] [live.hiccup :as h]))
+            [dossier.org :as org] [dossier.page :as page] [live.hiccup :as h]
+            [dossier.presentation :as presentation] [bl.json :as json]))
 (deftest share-capabilities-and-paths-are-not-filenames
   (let [t (m/random-id)] (is (m/token? t)) (is (= 64 (count (m/digest t)))))
   (doseq [p ["../secret" "/etc/passwd" "a//b" "a/../b" "a%2Fb" "a\\b"]] (is (not (m/relative? p))))
@@ -68,3 +69,27 @@
                  (assoc-in base ["routes" "index.html" "type"] "text/html\r\nX: injected")
                  (assoc base "routes" {"index.html" (assoc f "bytes" m/max-bytes) "app.css" f})]]
       (is (try (m/manifest! bad) false (catch _ true))))))
+
+(deftest presentation-selection-is-a-choice-not-a-path
+  (let [doc (org/read-doc "#+title: Test\n#+design: warm-signal\n") choices #{"warm-signal" "sober"}]
+    (is (= "warm-signal" (presentation/design doc nil choices nil)))
+    (is (= "sober" (presentation/design doc "sober" choices nil)))
+    (is (= "warm-signal" (get-in doc [:meta :design])))
+    (is (try (presentation/design doc "../../secret.css" choices nil) false (catch _ true)))
+    (is (try (presentation/design doc "missing" choices nil) false (catch _ true)))))
+
+(deftest selected-appearance-and-custom-css-are-frozen-in-the-export
+  (let [dir (str "/tmp/dossier-presentation-" (m/random-id))
+        text "#+title: Appearance\n#+language: fr\n#+design: warm-signal\n* Bonjour\nUn dossier.\n"
+        kit (Path/expand "bl-org-dossier/kit")]
+    (try
+      (let [a (export/export! text (str dir "/a") {:kit kit :directory dir :design "sober" :css "/* custom-one */" :files {} :previews {}})
+            b (export/export! text (str dir "/b") {:kit kit :directory dir :design "sober" :css "/* custom-two */" :files {} :previews {}})
+            route (get-in a [:manifest "routes" "index.html"])
+            html (File/read! (str dir "/a/public/" (get route "file")))]
+        (is (includes? html "data-design=\"sober\""))
+        (is (includes? html "custom-one"))
+        (is (= "sober" (get-in a [:manifest "presentation" "design"])))
+        (is (not= (:revision a) (:revision b)))
+        (is (not (includes? html "review.js"))))
+      (finally (File/rm_rf dir)))))

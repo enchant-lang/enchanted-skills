@@ -25,10 +25,12 @@
 (defn- request! [action done]
   (when-not (and action @pending)
   (when action (reset! pending action) (swap! state assoc "error" nil) (paint!))
-  (let [init (if action #js {:method "POST" :headers #js {"content-type" "application/json" "x-dossier-csrf" (.-csrf (.-dataset root))}
+  (let [design (.getAttribute (.-documentElement js/document) "data-design")
+        endpoint (str "publication" (when design (str "?design=" (js/encodeURIComponent design))))
+        init (if action #js {:method "POST" :headers #js {"content-type" "application/json" "x-dossier-csrf" (.-csrf (.-dataset root))}
                             :body (.stringify js/JSON (bl->js {"action" action}))}
                        #js {:cache "no-store"})]
-    (-> (js/fetch "publication" init)
+    (-> (js/fetch (bl->js endpoint) init)
       (.then (fn [r] (.json r)))
       (.then (fn [j] (when action (reset! pending nil)) (swap! state merge (js->bl j)) (paint!) (done) nil))
       (.catch (fn [_] (when action (reset! pending nil))

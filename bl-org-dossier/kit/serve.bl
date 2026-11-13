@@ -17,7 +17,8 @@
   (:require [web] [live.hiccup :as h] [bl.json :as json]
             [dossier.org :as o] [dossier.page :as pg] [dossier.answer :as ans] [dossier.film :as film]
             [dossier.feedback :as feedback] [dossier.witness :as witness] [dossier.review.http :as review] [dossier.notebook :as nb] [dossier.audience :as audience]
-            [dossier.share.host :as sharing] [dossier.share.assets :as publication-assets]))
+            [dossier.share.host :as sharing] [dossier.share.assets :as publication-assets]
+            [dossier.design :as design] [dossier.presentation :as presentation]))
 
 (defn- arg-path []
   (let [a (first (BeamLisp/argv))]
@@ -84,9 +85,12 @@
     (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js"))))
     conn (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
 
-(defn- publication-options []
-  (publication-assets/options
-    (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit")) doc-path))
+(defn- publication-options [conn text]
+  (let [doc (o/read-doc text)
+        supported (conj (set (concat (keys design/languages) designs)) (get-in doc [:meta :design]))]
+    (assoc (publication-assets/options
+      (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit")) doc-path)
+      :design (presentation/design doc (param conn "design") supported nil))))
 
 (defn- font-route [conn]
   (when (and (= "get" (web/method conn)) (starts-with? (web/path conn) "/fonts/"))
@@ -111,7 +115,7 @@
 
 (defn router [conn]
  (or (client-only conn)
-     (when-not (audience/locked?) (sharing/route conn doc-path publication-options
+     (when-not (audience/locked?) (sharing/route conn doc-path (fn [text] (publication-options conn text))
        (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
      (when-not (audience/locked?) (review/route conn doc-path))
      (pdf-route conn)

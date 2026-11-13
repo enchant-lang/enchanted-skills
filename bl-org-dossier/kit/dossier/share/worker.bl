@@ -29,7 +29,8 @@
         interrupted (and (not (contains? @jobs document)) (contains? #{"preparing" "publishing"} (get state "phase")))]
     {:configured (configured?) :busy (contains? #{"preparing" "publishing"} (get @jobs document))
      :phase (if interrupted "interrupted" (get @jobs document "idle")) :url (get state "url") :operation (get state "operation")
-     :publishedAt (get state "publishedAt") :error (or (get state "error") (when interrupted "Publication interrompue. Réessayez pour la terminer."))
+     :publishedAt (get state "publishedAt") :design (get state "design")
+     :error (or (get state "error") (when interrupted "Publication interrompue. Réessayez pour la terminer."))
      :revoked (get state "revoked" false)}))
 (defn- verify-public! [url revision]
   (let [[out code] (System/cmd "curl" (list "--silent" "--head" "--fail" "--max-time" "20"
@@ -57,7 +58,8 @@
                     (let [observed (call-receiver! {"action" "status" "id" (get state "id") "tokenHash" (model/digest token)
                                                    "operation" (get state "operation")} nil)
                           sequence (get-in observed ["grant" "sequence"] 0)
-                          result (export/export! text dir (options))
+                          prepared (options text)
+                          result (export/export! text dir prepared)
                           revision (:revision result)
                           request {"action" "publish" "id" (get state "id") "tokenHash" (model/digest token)
                                    "operation" (get state "operation") "revision" revision
@@ -68,7 +70,7 @@
                       (let [reply (call-receiver! request tar) grant (get reply "grant")
                             url (str (get (config) "origin") "/s/" token "/")]
                         (verify-public! url revision)
-                        (save-state! document (merge state grant {"token" token "url" url "phase" "idle" "error" nil}))
+                        (save-state! document (merge state grant {"token" token "url" url "design" (:design prepared) "phase" "idle" "error" nil}))
                         (swap! jobs assoc document "idle")))
                     (catch e
                       (save-state! document (assoc state "phase" "failed" "error" (str (ex-message e))))

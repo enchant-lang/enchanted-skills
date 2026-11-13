@@ -49,12 +49,13 @@
 (defn- kit-file [kit name] (File/read! (Path/join kit name)))
 (defn export!
   "Capture text and adapter's finite trees/files. Returns a manifest and digest.
-   opts: :kit :directory :css :files {url {:path :type}} :previews {id hiccup}."
+   opts: :kit :directory :design :css :files {url {:path :type}} :previews {id hiccup}."
   [text out opts]
   (let [allowed (set (keys (:files opts)))
         doc (public-doc (notebook/with-imports (org/read-doc text) (:directory opts)) allowed)
+        doc (if (:design opts) (assoc-in doc [:meta :design] (:design opts)) doc)
         kit (:kit opts)
-        _ (erlang/put :dossier/params "mode=client")
+        _ (erlang/put :dossier/params (str "mode=client" (when (:design opts) (str "&design=" (:design opts)))))
         raw-tree (page/page-h doc (str (kit-file kit "style.css") "\n" (:css opts)
                                       "\nhtml[data-published] [hidden]{display:none!important}") (kit-file kit "live.js"))
         urls (remove #(private-citation? % allowed)
@@ -85,6 +86,7 @@
                   (File/write! (str out "/public/" name) bytes)
                   [route {"file" name "type" (:type item) "bytes" (erlang/byte_size bytes) "sha256" (model/digest bytes)}]))
               (sort-by first routes)))
-        manifest (model/manifest! {"version" 1 "title" (get-in doc [:meta :title]) "routes" files})]
+        manifest (model/manifest! {"version" 1 "title" (get-in doc [:meta :title])
+                                   "presentation" {"design" (get-in doc [:meta :design])} "routes" files})]
     (File/write! (str out "/manifest.json") (json/encode manifest))
     {:manifest manifest :revision (model/revision manifest)}))

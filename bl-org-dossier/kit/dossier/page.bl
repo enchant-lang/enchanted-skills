@@ -248,7 +248,8 @@
 (defn page-h
   "The full HTML document."
   [doc css js]
-  (let [fr (= "fr" (get-in doc [:meta :language])) locked (get-in doc [:meta :locked])]
+  (let [fr (= "fr" (get-in doc [:meta :language])) locked (get-in doc [:meta :locked])
+        css (str css "\n" (design/css doc))]
   [:html {:lang (or (get-in doc [:meta :language]) "en") :data-design (get-in doc [:meta :design])
           :data-published (when (get-in doc [:meta :published]) "true")}
    [:head
@@ -259,7 +260,7 @@
     (for [href (design/font-links doc)] [:link {:rel "stylesheet" :href href}])
     [:title (String/replace (or (:title (:meta doc)) "Dossier") (Regex/compile! "\\s+—.*$") "")]
     (when-not locked [:link {:rel "stylesheet" :href "review.css"}])
-    [:style css (design/css doc)]]
+    [:style css]]
    [:body
     (if locked
       [:div.live [:i] [:span#stamp (if (get-in doc [:meta :published]) (if fr "Copie partagée" "Shared copy") (ui/tr "live"))]
