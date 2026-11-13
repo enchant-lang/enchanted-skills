@@ -83,6 +83,9 @@ designs, report styles, per-design screen styles and font directories. Both
 the private host and publication adapter consume it. Project-specific changes
 belong there or in its declared CSS/font assets. The manifest and private
 publication receipt record the resolved design.
+CSS and font files are read again for each publication. Changes to Beam Lisp
+presentation or renderer code require the usual private author-service restart;
+the public reader and its host configuration do not need an update.
 
 * Execution and recovery
 
