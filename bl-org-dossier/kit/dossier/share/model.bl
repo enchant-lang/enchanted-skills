@@ -1,5 +1,5 @@
 ; Pure publication and route validation. No request can choose a filesystem root.
-(ns dossier.share.model (:require [bl.json :as json]))
+(ns dossier.share.model (:require [bl.json :as json] [ora.accounts.protocol :as protocol]))
 
 (def max-bytes (* 128 1024 1024))
 (def max-files 4096)
@@ -37,14 +37,23 @@
     (when (or (= path "") (relative? path)) (if (= path "") "index.html" path))) (catch _ nil)))
 (defn advance [prior owner request]
   (let [action (get request "action") id (get request "id") rev (get request "revision")
-        expected (get request "expected" 0) seq (get prior "sequence" 0)]
+        expected (get request "expected" 0) seq (get prior "sequence" 0)
+        fingerprint (digest (pr-str (into (sorted-map) request)))
+        visibility (if (= action "revoke") (get prior "visibility" "link") (get request "visibility" "link"))
+        clients (if (= action "revoke") (get prior "clients" []) (get request "clients" []))]
     (when-not (and (id? id) (id? (get request "operation")) (contains? #{"publish" "revoke"} action)) (refuse "Invalid publication action"))
     (when (and prior (not= owner (get prior "owner"))) (refuse "Publication belongs to another publisher"))
-    (if (and prior (= (get request "operation") (get prior "operation"))) prior
+    (when-not (and (contains? #{"link" "clients"} visibility) (vector? clients) (<= (count clients) 100)
+                  (every? #(and (string? %) (Regex/match? #"^client-[a-f0-9]{24}$" %)) clients)
+                  (or (= visibility "link") (seq clients))) (refuse "Choose clients for this publication"))
+    (if (and prior (= (get request "operation") (get prior "operation")))
+      (do (when-not (= fingerprint (get prior "fingerprint")) (refuse "Operation ID names different publication inputs")) prior)
       (do
         (when-not (= expected seq) (refuse "Publication changed; refresh and retry"))
         (when (and (= action "publish") (not (hex? rev))) (refuse "Invalid artifact revision"))
-        {"version" 1 "id" id "owner" owner "sequence" (inc seq)
+        (protocol/step :publication (if prior (if (get prior "revoked") :revoked :active) :unpublished) (keyword action))
+        {"version" 1 "id" id "owner" owner "sequence" (inc seq) "fingerprint" fingerprint
+         "visibility" visibility "clients" (if (= visibility "link") [] (vec (sort (distinct clients))))
          "operation" (get request "operation") "revision" (or rev (get prior "revision"))
          "revisions" (vec (distinct (take 10 (cons (or rev (get prior "revision")) (get prior "revisions" [])))))
          "revoked" (= action "revoke") "publishedAt" (str (DateTime/utc_now))}))))

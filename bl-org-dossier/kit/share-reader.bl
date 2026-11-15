@@ -1,38 +1,6 @@
-; Public listener: validates the grant for every read, then delegates HTTP files to Plug.
-(ns dossier.share.reader (:require [web] [bl.json :as json] [dossier.share.model :as model]))
+(ns dossier.share.reader (:require [web] [dossier.share.read :as reader] [ora.accounts.client :as accounts]))
 (def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
-(defn unavailable [c] (web/text c 404 "Ce lien n'est plus disponible."))
-(defn read-json [path] (try (json/decode (File/read! path)) (catch _ nil)))
-(defn router [c]
-  (let [c (-> c (web/resp-header "cache-control" "private, no-store")
-                 (web/resp-header "referrer-policy" "no-referrer")
-                 (web/resp-header "x-robots-tag" "noindex, nofollow, noarchive")
-                 (web/resp-header "content-security-policy"
-                   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'")
-                 (web/resp-header "x-content-type-options" "nosniff"))
-        path (web/path c)]
-    (cond
-      (not (contains? #{"get" "head"} (web/method c))) (web/text c 405 "Lecture seule.")
-      (= path "/health") (web/json c {:ok true})
-      :else
-      (if-let [match (Regex/run (Regex/compile! "^/s/([A-Za-z0-9_-]{43})/(?:r/([a-f0-9]{64})/(.*))?$") path)]
-        (let [token (nth match 1) grant (read-json (str root "/grants/" (model/digest token) ".json"))
-              rev (nth match 2 "") tail (nth match 3 "")]
-          (cond
-            (or (nil? grant) (get grant "revoked") (not (model/hex? (get grant "revision")))) (unavailable c)
-            (blank? rev) (web/text (web/resp-header c "location" (str "/s/" token "/r/" (get grant "revision") "/")) 307 "")
-            (not (contains? (set (get grant "revisions")) rev)) (unavailable c)
-            :else
-            (let [directory (str root "/objects/" rev)
-                  manifest (read-json (str directory "/manifest.json"))
-                  key (model/route-key tail (web/query c)) file (get-in manifest ["routes" key])]
-              (if-not file (unavailable c)
-                (let [opts (Plug.Static/init (list (tuple :at "/") (tuple :from (str directory "/public"))
-                                                  (tuple :gzip false) (tuple :cache_control_for_etags "private, no-store")))
-                      response (Plug.Static/call (Map/put c :path_info (list (get file "file"))) opts)]
-                  (if (= :unset (:state response)) (unavailable c)
-                    response))))))
-        (unavailable c)))))
-(web/serve {:port (String/to_integer (or (System/get_env "PORT") "4061"))
-            :ip (tuple 127 0 0 1) :plug router :log :off})
+(def host (accounts/from-env))
+(web/serve {:port (String/to_integer (System/get_env "PORT" "4061")) :ip (tuple 127 0 0 1)
+            :plug #(reader/router root host %) :log :off})
 (Process/sleep :infinity)

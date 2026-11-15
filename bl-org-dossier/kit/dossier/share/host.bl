@@ -14,14 +14,17 @@
         (String/replace "</body>" (str
           "<section id=\"dossier-publication\" data-csrf=\"" csrf "\">"
           "<div id=\"publication-sheet\" hidden><header><strong>Partager ce dossier</strong><button id=\"publication-close\" type=\"button\" aria-label=\"Fermer\">×</button></header>"
-          "<p>Les personnes qui ont ce lien peuvent consulter la copie.</p><p>Lecture seule</p><p id=\"publication-status\" role=\"status\"></p>"
+          "<fieldset><legend>Accès</legend><label><input type=\"radio\" name=\"publication-visibility\" value=\"link\" checked> Toute personne avec le lien</label>"
+          "<label><input type=\"radio\" name=\"publication-visibility\" value=\"clients\"> Clients sélectionnés</label></fieldset>"
+          "<div id=\"publication-recipients\" hidden><label>Rechercher<input id=\"publication-search\" type=\"search\" placeholder=\"Nom ou email\"></label>"
+          "<div id=\"publication-clients\"></div><p id=\"publication-selected\"></p></div><p id=\"publication-status\" role=\"status\"></p>"
           "<label for=\"publication-url\">Lien de partage</label><input id=\"publication-url\" readonly>"
           "<div class=\"publication-actions\"><button id=\"publication-copy\" type=\"button\">Copier le lien</button><a id=\"publication-visit\" target=\"_blank\" rel=\"noopener noreferrer\">Ouvrir la copie</a></div>"
           "<div class=\"publication-actions\"><button id=\"publication-update\" type=\"button\">Publier cette version</button><button id=\"publication-revoke\" type=\"button\">Arrêter le partage</button></div></div></section>"
           "<script type=\"module\" src=\"publication-client/ns/dossier.share.client.mjs\"></script></body>"))))))
 (defn route [c document options kit]
   (let [path (web/path c)]
-    (when (or (= path "/publication") (= path "/publication.css") (starts-with? path "/publication-client/"))
+    (when (or (= path "/publication") (= path "/publication/clients") (= path "/publication.css") (starts-with? path "/publication-client/"))
       (if-not (enabled? c) (web/json c 403 {:error "Accès propriétaire requis."})
         (cond
           (= path "/publication.css") (web/bytes c "text/css" (File/read! (str kit "/publication.css")))
@@ -30,13 +33,15 @@
             (if (and (model/relative? relative) (ends-with? relative ".mjs"))
               (web/bytes c "text/javascript" (File/read! (str kit "/publication-client/" relative)))
               (web/text c 404 "Not found")))
-          (= "get" (web/method c)) (web/json (web/resp-header c "cache-control" "no-store") (worker/inspect document))
+          (= "get" (web/method c))
+          (try (web/json (web/resp-header c "cache-control" "no-store") (if (= path "/publication/clients") (worker/directory) (worker/inspect document)))
+           (catch _ (web/json c 503 {:error "Le répertoire clients est indisponible."})))
           (and (= "post" (web/method c)) (identity/same-origin? c) (= csrf (web/req-header c "x-dossier-csrf")))
-          (let [read (web/read-body-limited* c 1024 5000)]
+          (let [read (web/read-body-limited* c 16384 5000)]
             (if (:error read) (web/json (:conn read) 413 {:error "Requête trop longue."})
               (try (let [request (json/decode (:body read))]
                 (web/json (:conn read) (case (get request "action")
-                  "publish" (worker/publish! document options)
+                  "publish" (worker/publish! document options (select-keys request ["visibility" "clients"]))
                   "revoke" (worker/revoke! document)
                   (model/refuse "Action inconnue."))))
                 (catch e (web/json (:conn read) 400 {:error (ex-message e)})))))

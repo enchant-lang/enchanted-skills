@@ -1,0 +1,51 @@
+;; Shared first-party app adapter. Uses Enchant's versioned authenticated
+;; namespace transport; browsers never receive its service credential.
+(ns ora.accounts.client
+ (:require [auth.interface :as interface] [auth.contract :as contract] [auth.transport :as transport]
+           [auth.identity :as identity] [ora.accounts.crypto :as secret] [clojure.edn :as edn] [web]))
+(defn open! [file]
+ (let [config (edn/read-string (File/read! file)) manifest (contract/read! (:interface config))
+       endpoint (transport/endpoint {:url (:endpoint config) :token-file (:token-file config)
+                  :issuer-public (:issuer-public config) :allow-loopback-http? (:allow-loopback-http? config false)})]
+  (when-not (= "ora.accounts.api" (:namespace manifest)) (throw (ex-info "Unexpected account interface" {})))
+  {:config config :provider {:world (:world config) :manifest manifest} :endpoint endpoint}))
+(defn from-env [] (when-let [path (System/get_env "ORA_ACCOUNTS_CONFIG")] (open! path)))
+(defn call! [host operation value]
+ (identity/without-identity
+  (fn []
+   (let [args (if (contains? #{"directory" "admin-state"} operation) [(get-in host [:config :application])]
+                  [(get-in host [:config :application]) value])
+         request (interface/request (:provider host) operation args)
+         reply (transport/result! request ((:endpoint host) request))]
+    (if (get reply "error") (throw (ex-info (get reply "error") {:status (get reply "status" 409)})) (get reply "value"))))))
+(defn current [host request]
+ (when-let [token (web/req-cookie request "ora-client")]
+  (call! host "current" {"token" token})))
+(defn cookie [host request name value age]
+ (web/put-cookie request name value
+  (list (tuple :http_only true) (tuple :same_site "Lax") (tuple :path "/") (tuple :max_age age)
+        (tuple :secure (starts-with? (get-in host [:config :origin]) "https://")))))
+(defn safe-next [path]
+ (if (and (string? path) (starts-with? path "/") (not (starts-with? path "//")) (not (String/contains? path "\\")) (<= (count path) 800)) path "/"))
+(defn begin! [host request next intent]
+ (let [state (secret/random) callback (str (get-in host [:config :origin]) "/auth/callback")
+       result (call! host "begin-login" {"request" (secret/id "begin-") "callback" callback "state" state "return" (safe-next next) "intent" intent})]
+  (web/redirect (cookie host request "ora-login-state" state 600) (get result "authorize"))))
+(defn routes [host request on-login]
+ (when host
+  (let [path (web/path request) method (web/method request) query (URI/decode_query (web/query request))]
+   (cond
+    (and (= path "/auth/login") (= method "get")) (begin! host request (get query "next" "/account") {})
+    (and (= path "/auth/callback") (= method "get"))
+    (let [state (web/req-cookie request "ora-login-state")
+          _ (when-not state (throw (ex-info "This sign-in began in another browser or expired." {:status 403})))
+          result (call! host "redeem-login" {"request" (str "redeem-" (secret/digest (str (get query "flow") state)))
+                   "flow" (get query "flow") "code" (get query "code") "state" state "device" (web/req-header request "user-agent")})]
+     (on-login (cookie host (cookie host request "ora-login-state" "" 0) "ora-client" (get result "token") 2592000) result))
+    (and (= path "/auth/logout") (= method "post"))
+    (do
+     (when-not (= (get-in host [:config :origin]) (web/req-header request "origin")) (throw (ex-info "Open this app to sign out." {:status 403})))
+     (when-let [token (web/req-cookie request "ora-client")]
+      (call! host "logout" {"request" (secret/id "logout-") "token" token}))
+     (web/redirect (cookie host request "ora-client" "" 0) "/account"))
+    :else nil))))

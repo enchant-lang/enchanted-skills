@@ -1,7 +1,7 @@
 ; Owner-side publication jobs; retained intent and receipts survive HTTP navigation.
 (ns dossier.share.worker
   (:require [bl.json :as json] [dossier.share.model :as model]
-            [dossier.share.export :as export] [dossier.share.archive :as archive]))
+            [dossier.share.export :as export] [dossier.share.archive :as archive] [ora.accounts.client :as accounts]))
 (def account-root (Path/expand "~/.local/state/dossier-share"))
 (def config-path (Path/expand "~/.config/dossier-share/config.json"))
 (def jobs (atom {}))
@@ -30,59 +30,74 @@
     {:configured (configured?) :busy (contains? #{"preparing" "publishing"} (get @jobs document))
      :phase (if interrupted "interrupted" (get @jobs document "idle")) :url (get state "url") :operation (get state "operation")
      :publishedAt (get state "publishedAt") :design (get state "design")
+     :visibility (get state "visibility" "link") :clients (get state "clients" []) :pending (boolean (get state "pendingRequest"))
      :error (or (get state "error") (when interrupted "Publication interrompue. Réessayez pour la terminer."))
      :revoked (get state "revoked" false)}))
-(defn- verify-public! [url revision]
+(defn- verify-public! [url revision visibility]
   (let [[out code] (System/cmd "curl" (list "--silent" "--head" "--fail" "--max-time" "20"
         "--connect-timeout" "5" "--max-redirs" "0" "--proto" "=https" "--output" "/dev/null"
         "--write-out" "%{http_code}" "--url" (str url "r/" revision "/")))]
-    (when-not (and (= code 0) (= "200" out))
+    (when-not (and (= code 0) (= (if (= visibility "clients") "302" "200") out))
       (model/refuse "Copie reçue, mais son accès public n'est pas confirmé. Réessayez."))))
-(defn publish! [document options]
-  (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
-    (fn []
-      (when-not (contains? #{"preparing" "publishing"} (get @jobs document))
-        (let [prior (load-state document)
-              token (or (get prior "token") (model/random-id))
-              state (merge prior {"token" token "id" (or (get prior "id") (model/random-id))
-                                  "operation" (model/random-id) "phase" "preparing" "error" nil})
-              text (File/read! document)]
-          (save-state! document state)
-          (swap! jobs assoc document "preparing")
-          (spawn (fn []
-            (global/trans (tuple :dossier/share-producer (erlang/self))
-              (fn []
-                (let [dir (str account-root "/jobs/" (get state "operation")) tar (str dir ".tar")]
-                  (try
-                    (File/mkdir_p! (Path/dirname dir))
-                    (let [observed (call-receiver! {"action" "status" "id" (get state "id") "tokenHash" (model/digest token)
-                                                   "operation" (get state "operation")} nil)
-                          sequence (get-in observed ["grant" "sequence"] 0)
-                          prepared (options text)
-                          result (export/export! text dir prepared)
-                          revision (:revision result)
-                          request {"action" "publish" "id" (get state "id") "tokenHash" (model/digest token)
-                                   "operation" (get state "operation") "revision" revision
-                                   "expected" sequence}]
-                      (archive/write-tar! dir tar)
-                      (save-state! document (assoc state "phase" "publishing"))
-                      (swap! jobs assoc document "publishing")
-                      (let [reply (call-receiver! request tar) grant (get reply "grant")
-                            url (str (get (config) "origin") "/s/" token "/")]
-                        (verify-public! url revision)
-                        (save-state! document (merge state grant {"token" token "url" url "design" (:design prepared) "phase" "idle" "error" nil}))
-                        (swap! jobs assoc document "idle")))
-                    (catch e
-                      (save-state! document (assoc state "phase" "failed" "error" (str (ex-message e))))
-                      (swap! jobs assoc document "failed"))
-                    (finally (File/rm_rf dir) (File/rm tar))))))))))
-      (inspect document))))
+(defn directory []
+ (let [path (or (System/get_env "DOSSIER_ACCOUNTS_CONFIG") (get (config) "accountsConfig"))]
+  (if path {:configured true :clients (accounts/call! (accounts/open! path) "directory" {})}
+           {:configured false :clients []})))
+(defn audience! [audience]
+ (let [visibility (get audience "visibility" "link") clients (vec (sort (distinct (get audience "clients" []))))]
+  (when-not (and (contains? #{"link" "clients"} visibility) (<= (count clients) 100)
+                (or (= visibility "link") (seq clients))) (model/refuse "Sélectionnez au moins un client."))
+  {"visibility" visibility "clients" (if (= visibility "link") [] clients)}))
+(defn publish! [document options & [audience]]
+ (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
+  (fn []
+   (when-not (contains? #{"preparing" "publishing"} (get @jobs document))
+    (let [prior (load-state document) audience (audience! (or audience {}))
+          text (File/read! document) source-hash (model/digest text)
+          pending-request (get prior "pendingRequest")
+          _ (when pending-request
+              (when-not (and (= source-hash (get prior "sourceHash"))
+                             (= audience (select-keys prior ["visibility" "clients"])))
+               (model/refuse "Terminez la publication en attente avant de modifier son contenu ou ses destinataires.")))
+          token (or (get prior "token") (model/random-id))
+          state (merge prior audience {"token" token "id" (or (get prior "id") (model/random-id))
+                  "operation" (if pending-request (get prior "operation") (model/random-id))
+                  "sourceHash" source-hash "phase" "preparing" "error" nil})]
+     (save-state! document state) (swap! jobs assoc document "preparing")
+     (spawn (fn []
+      (global/trans (tuple :dossier/share-producer (erlang/self))
+       (fn []
+        (let [dir (str account-root "/jobs/" (get state "operation")) tar (str dir ".tar") current (atom state)]
+         (try
+          (File/mkdir_p! (Path/dirname dir))
+          (let [observed (call-receiver! {"action" "status" "id" (get state "id") "tokenHash" (model/digest token) "operation" (get state "operation")} nil)
+                request (or pending-request
+                 (let [prepared (options text) result (export/export! text dir prepared)
+                       request (merge audience {"action" "publish" "id" (get state "id") "tokenHash" (model/digest token)
+                                 "operation" (get state "operation") "revision" (:revision result) "expected" (get-in observed ["grant" "sequence"] 0)})]
+                  (archive/write-tar! dir tar)
+                  (swap! current assoc "pendingRequest" request "design" (:design prepared))
+                  (save-state! document @current) request))
+                _ (swap! current assoc "phase" "publishing") _ (save-state! document @current)
+                _ (swap! jobs assoc document "publishing")
+                reply (call-receiver! request tar) grant (get reply "grant")
+                url (str (get (config) "origin") "/s/" token "/")]
+           (verify-public! url (get request "revision") (get request "visibility"))
+           (save-state! document (merge (dissoc @current "pendingRequest") grant {"token" token "url" url "phase" "idle" "error" nil}))
+           (swap! jobs assoc document "idle") (File/rm_rf dir) (File/rm tar))
+          (catch error
+           (save-state! document (assoc @current "phase" "failed" "error" (ex-message error)))
+           (swap! jobs assoc document "failed")))))))))
+   (inspect document))))
 (defn revoke! [document]
-  (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
-    (fn []
-      (when (contains? #{"preparing" "publishing"} (get @jobs document)) (model/refuse "Attendez la fin de la publication."))
-      (let [state (load-state document)
-            request {"action" "revoke" "id" (get state "id") "tokenHash" (model/digest (get state "token"))
-                     "operation" (model/random-id) "expected" (get state "sequence" 0)}
-            reply (call-receiver! request nil)]
-        (save-state! document (merge state (get reply "grant"))) (inspect document)))))
+ (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))
+  (fn []
+   (when (contains? #{"preparing" "publishing"} (get @jobs document)) (model/refuse "Attendez la fin de la publication."))
+   (let [state (load-state document)
+         pending (get state "pendingRequest")
+         _ (when (and pending (not= "revoke" (get pending "action"))) (model/refuse "Terminez la publication en attente avant de révoquer."))
+         request (or pending {"action" "revoke" "id" (get state "id") "tokenHash" (model/digest (get state "token"))
+                              "operation" (model/random-id) "expected" (get state "sequence" 0)})]
+    (save-state! document (assoc state "pendingRequest" request))
+    (let [reply (call-receiver! request nil)]
+     (save-state! document (merge (dissoc state "pendingRequest") (get reply "grant"))) (inspect document))))))

@@ -1,8 +1,9 @@
 ; Private forced-command receiver. The wrapper holds the OS lock and pins owner/root.
 (ns dossier.share.receive
-  (:require [bl.json :as json] [dossier.share.model :as model] [dossier.share.archive :as archive]))
+  (:require [bl.json :as json] [dossier.share.model :as model] [dossier.share.archive :as archive] [ora.accounts.client :as accounts]))
 (def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
 (def owner (System/fetch_env! "DOSSIER_SHARE_PUBLISHER"))
+(def authority (accounts/from-env))
 (defn read-json [p] (when (File/regular? p) (json/decode (File/read! p))))
 (defn atomic-json! [p v]
   (let [tmp (str p ".tmp-" (System/pid))]
@@ -38,7 +39,9 @@
     (let [path (str root "/grants/" hash ".json") prior (read-json path)]
       (when (and prior (not= owner (get prior "owner"))) (model/refuse "Wrong publisher"))
       (when (and prior (not= id (get prior "id"))) (model/refuse "Wrong publication"))
-      (if (= "status" (get request "action")) {:ok true :grant prior}
+      (if (= "status" (get request "action"))
+       (let [central (when authority (accounts/call! authority "publication-status" {"id" id}))]
+        {:ok true :grant (if central (merge prior central) prior)})
         (let [staging (str root "/staging/" operation) tar (str staging ".tar")
               action (get request "action")]
           (try
@@ -63,13 +66,19 @@
                   (File/chmod! (str staging "/" (:path f)) (if (= :dir (:type f)) 488 416)))
                 (File/chmod! staging 488)
                 (if (File/exists? object) (File/rm_rf staging) (File/rename! staging object))))
-            (let [grant (model/advance prior owner request)]
+            (let [central-prior (when authority (accounts/call! authority "publication-status" {"id" id}))
+                  replay (= operation (get central-prior "operation"))
+                  basis (if (and central-prior (not replay)) (merge prior central-prior) prior)
+                  grant (if replay (merge prior central-prior {"id" id "owner" owner "fingerprint" (model/digest (pr-str (into (sorted-map) request)))})
+                                  (model/advance basis owner request))
+                  central (when authority (accounts/call! authority "publication!" (assoc request "request" (str "publication-" operation))))
+                  grant (merge grant central)]
               (atomic-json! path grant)
               {:ok true :grant grant})
             (finally (File/rm_rf staging) (File/rm tar))))))))
 (try
   (let [original (or (System/get_env "SSH_ORIGINAL_COMMAND") "")
-        _ (when-not (<= 1 (erlang/byte_size original) 8192) (model/refuse "Bounded command required"))
+        _ (when-not (<= 1 (erlang/byte_size original) 16384) (model/refuse "Bounded command required"))
         request (json/decode original)]
     (println (json/encode (receive! request))))
   (catch _ (println (json/encode {:ok false :error "Publication refused; inspect the owner operation locally."}))

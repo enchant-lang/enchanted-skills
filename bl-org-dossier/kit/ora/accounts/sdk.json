@@ -1,0 +1,9 @@
+{
+  "format": "ora.accounts.sdk/1",
+  "files": {
+    "ora/accounts/client.bl": "361d3a26b6411652ea25ee0f1a54d53b42a284a72fffef948801704d3b192250",
+    "ora/accounts/crypto.bl": "7dcc195cdc9cbb933eb42ce373150a204389ddd7dad616267c5ad025af842b3c",
+    "ora/accounts/protocol.bl": "59477d6f65164295bbb591865e16da51f46392fe56cdbceeb5224c059fa854a8",
+    "ora/accounts/interface.edn": "ba9cef6bcdb597ca99f2334891d82f2980c7e1208967ab833af9d7cbafdbbdfe"
+  }
+}

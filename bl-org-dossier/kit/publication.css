@@ -6,4 +6,5 @@
 .live #publication-open{order:99;margin-left:auto;flex:none;background:var(--clay);color:var(--paper);border-color:var(--clay);min-height:32px;padding:4px 10px}
 #dossier-publication{top:3.5rem;z-index:200}
 #publication-sheet{top:0}
+#publication-sheet fieldset{border:0;padding:0;margin:1rem 0}#publication-sheet fieldset label,#publication-clients label{display:flex;gap:.6rem;align-items:center;padding:.5rem 0;font-size:.9rem}#publication-sheet input[type=radio],#publication-sheet input[type=checkbox]{width:1.1rem;height:1.1rem;flex:none;accent-color:var(--clay)}#publication-search{width:100%;padding:.6rem;font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink)}#publication-clients{max-height:13rem;overflow:auto}#publication-sheet :focus-visible{outline:3px solid var(--clay);outline-offset:3px}#publication-sheet button:hover,#publication-sheet a:hover{filter:brightness(.93)}
 @media(max-width:700px){#dossier-publication{top:6rem}#publication-sheet{max-height:calc(100dvh - 7rem)}}

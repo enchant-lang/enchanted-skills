@@ -5,6 +5,9 @@
 (def state (atom {}))
 (def timer (atom nil))
 (def pending (atom nil))
+(def draft (atom nil))
+(def clients (atom []))
+(defn- audience [] (or @draft {"visibility" "link" "clients" []}))
 (defn- txt! [selector value] (set! (.-textContent ($ selector)) (bl->js value)))
 (defn- paint! []
   (let [s @state url (get s "url") available (and url (not (get s "revoked"))) busy (or @pending (get s "busy"))]
@@ -14,10 +17,12 @@
     (set! (.-hidden ($ "#publication-visit")) (not available))
     (set! (.-href ($ "#publication-visit")) (bl->js (or url "#")))
     (set! (.-hidden ($ "#publication-revoke")) (not available))
-    (set! (.-disabled ($ "#publication-update")) (boolean busy))
+    (set! (.-disabled ($ "#publication-update")) (boolean (or busy (and (= "clients" (get (audience) "visibility")) (empty? (get (audience) "clients"))))))
     (set! (.-disabled ($ "#publication-revoke")) (boolean busy))
     (txt! "#publication-open" (if busy "Publication…" "Partager"))
     (txt! "#publication-update" (if available "Mettre à jour la copie" "Publier cette version"))
+    (set! (.-hidden ($ "#publication-recipients")) (not= "clients" (get (audience) "visibility")))
+    (txt! "#publication-selected" (str (count (get (audience) "clients")) " sélectionné(s)"))
     (txt! "#publication-status" (or (get s "error")
       (if busy (if (= "revoke" @pending) "Arrêt du partage…" (if (= "preparing" (get s "phase")) "Préparation de la copie…" "Publication…"))
         (if available "La copie est disponible." "Aucune copie partagée."))))))
@@ -28,24 +33,50 @@
   (let [design (.getAttribute (.-documentElement js/document) "data-design")
         endpoint (str "publication" (when design (str "?design=" (js/encodeURIComponent design))))
         init (if action #js {:method "POST" :headers #js {"content-type" "application/json" "x-dossier-csrf" (.-csrf (.-dataset root))}
-                            :body (.stringify js/JSON (bl->js {"action" action}))}
+                            :body (.stringify js/JSON (bl->js (assoc (audience) "action" action)))}
                        #js {:cache "no-store"})]
     (-> (js/fetch (bl->js endpoint) init)
       (.then (fn [r] (.json r)))
-      (.then (fn [j] (when action (reset! pending nil)) (swap! state merge (js->bl j)) (paint!) (done) nil))
+      (.then (fn [j] (when action (reset! pending nil)) (swap! state merge (js->bl j))
+         (when (nil? @draft)
+          (reset! draft (select-keys @state ["visibility" "clients"]))
+          (when-let [radio ($ (str "input[name=publication-visibility][value=" (get @draft "visibility" "link") "]"))] (set! (.-checked radio) true)))
+         (paint!) (done) nil))
       (.catch (fn [_] (when action (reset! pending nil))
         (swap! state assoc "error" "Connexion interrompue. Votre copie précédente reste disponible.") (paint!) nil))))))
 (defn refresh! []
   (request! nil (fn []
     (when @timer (js/clearTimeout @timer))
     (when (get @state "busy") (reset! timer (js/setTimeout refresh! 1200))))))
+(defn- render-clients! []
+ (let [container ($ "#publication-clients") term (String/downcase (js->bl (.-value ($ "#publication-search"))))]
+  (set! (.-textContent container) "")
+  (doseq [client @clients :when (String/contains? (String/downcase (str (get client "name") " " (get client "email"))) term)]
+   (let [label (.createElement js/document "label") input (.createElement js/document "input") text (.createElement js/document "span") id (get client "id")]
+    (set! (.-type input) "checkbox") (set! (.-checked input) (contains? (set (get (audience) "clients")) id))
+    (set! (.-textContent text) (bl->js (str (get client "name") " · " (get client "email"))))
+    (.addEventListener input "change" (fn []
+     (swap! draft assoc "clients" (vec (if (.-checked input) (conj (set (get (audience) "clients")) id) (disj (set (get (audience) "clients")) id)))) (paint!)))
+    (.appendChild label input) (.appendChild label text) (.appendChild container label)))))
+(defn- load-clients! []
+ (-> (js/fetch "publication/clients" #js {:cache "no-store"}) (.then (fn [response] (.json response)))
+  (.then (fn [value] (let [value (js->bl value)]
+   (if (get value "configured") (do (reset! clients (get value "clients" [])) (render-clients!))
+    (txt! "#publication-clients" "Le répertoire clients n'est pas connecté."))) nil))
+  (.catch (fn [_] (txt! "#publication-clients" "Le répertoire clients est indisponible.") nil))))
 (when root
   (.addEventListener ($ "#publication-open") "click" (fn []
     (set! (.-hidden ($ "#publication-sheet")) false)
-    (request! nil (fn [] (if (and (not (get @state "url")) (not (get @state "busy")))
-      (request! "publish" refresh!) (when (get @state "busy") (refresh!)))))))
+    (request! nil (fn [] (load-clients!) (when (get @state "busy") (refresh!))))))
   (.addEventListener ($ "#publication-close") "click" (fn [] (set! (.-hidden ($ "#publication-sheet")) true)))
-  (.addEventListener ($ "#publication-update") "click" (fn [] (request! "publish" refresh!)))
+  (.addEventListener ($ "#publication-update") "click" (fn []
+   (when (or (not (get @state "url")) (= (audience) (select-keys @state ["visibility" "clients"]))
+             (js/confirm (bl->js (if (= "link" (get (audience) "visibility")) "Toute personne avec le lien pourra lire ce dossier. Continuer ?"
+                                  (str "Limiter l’accès aux " (count (get (audience) "clients")) " client(s) sélectionné(s) ?")))))
+    (request! "publish" refresh!))))
+  (doseq [radio (array-seq (.querySelectorAll js/document "input[name=publication-visibility]"))]
+   (.addEventListener radio "change" (fn [] (swap! draft assoc "visibility" (js->bl (.-value radio))) (paint!))))
+  (.addEventListener ($ "#publication-search") "input" render-clients!)
   (.addEventListener ($ "#publication-revoke") "click" (fn [] (request! "revoke" refresh!)))
   (.addEventListener ($ "#publication-copy") "click" (fn []
     (let [input ($ "#publication-url") fallback (fn [] (.select input) (txt! "#publication-status" "Le lien est sélectionné. Vous pouvez le copier."))]

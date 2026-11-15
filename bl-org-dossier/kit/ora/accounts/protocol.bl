@@ -1,0 +1,42 @@
+;; Executable lifecycle data. These transitions drive the real writer and its
+;; Veritas histories; diagrams and API adapters consume the same definitions.
+(ns ora.accounts.protocol)
+(def machines
+ {:account {:initial :pending :states #{:pending :active :paused}
+            :edges {[:pending :activate] :active [:active :pause] :paused [:paused :resume] :active}}
+  :invitation {:initial :pending :states #{:pending :accepted :cancelled :expired :replaced}
+               :edges {[:pending :accept] :accepted [:pending :cancel] :cancelled
+                       [:pending :expire] :expired [:pending :replace] :replaced}}
+  :session {:initial :active :states #{:active :revoked :expired}
+            :edges {[:active :revoke] :revoked [:active :expire] :expired}}
+  :handoff {:initial :pending :states #{:pending :authorized :consumed :expired}
+            :edges {[:pending :authorize] :authorized [:authorized :redeem] :consumed
+                    [:pending :expire] :expired [:authorized :expire] :expired}}
+  :publication {:initial :unpublished :states #{:unpublished :active :revoked}
+                :edges {[:unpublished :publish] :active [:active :publish] :active
+                        [:active :revoke] :revoked [:revoked :publish] :active}}
+  :delivery {:initial :prepared :states #{:prepared :dispatching :delivered :failed :unknown :cancelled}
+             :edges {[:prepared :dispatch] :dispatching [:prepared :cancel] :cancelled
+                     [:dispatching :acknowledge] :delivered [:dispatching :reject] :failed
+                     [:dispatching :timeout] :unknown [:unknown :reconcile-delivered] :delivered
+                     [:unknown :reconcile-missing] :prepared [:failed :retry] :prepared}}})
+(defn step [machine state event]
+ (or (get-in machines [machine :edges [state event]])
+     (throw (ex-info "Lifecycle transition refused" {:kind :accounts/transition :machine machine :state state :event event}))))
+(defn valid? [machine state] (contains? (get-in machines [machine :states]) state))
+(defn authorize-share? [publication client]
+ (and (= :active (:state publication))
+      (or (= :link (:visibility publication))
+          (and (= :active (:state client)) (contains? (set (:clients publication)) (:id client))))))
+(def contracts
+ {:login {:request [:application :callback :state-hash :return-to] :result [:flow :authorize-url]
+          :requires #{:registered-application :exact-callback :private-state}}
+  :handoff {:request [:application :flow :code :state] :result [:client :session]
+            :requires #{:same-application :same-browser-state :not-expired :single-use :active-client}}
+  :session {:request [:application :token] :result [:client :session :expires]
+            :requires #{:signature :audience :current-epoch :not-expired :not-revoked}}
+  :publication {:request [:id :operation :expected :revision :visibility :clients]
+                :result [:id :sequence :revision :visibility :clients :state]
+                :requires #{:publisher :expected-sequence :same-operation-same-inputs :known-clients}}
+  :read {:request [:publication :revision :session] :result [:allowed]
+         :requires #{:current-publication :admitted-revision :current-audience}}})
