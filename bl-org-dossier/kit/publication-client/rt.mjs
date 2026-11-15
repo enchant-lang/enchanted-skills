@@ -49,8 +49,8 @@ export class Flt {
 }
 
 /** An exact decimal (`1.50M`): unscaled BigInt `u` and scale `s` >= 0, value
-    u * 10^-s (PLAN-157 D3). As on the BEAM the scale is part of the value:
-    (= 1.5M 1.50M) is false, and `1.50M` prints with its two places. */
+    u * 10^-s. Generic equality compares exact numeric values; keyEq retains
+    coefficient and scale. Printing and arithmetic preserve the representation. */
 export class Dec {
   constructor(u, s) { this.u = BigInt(u); this.s = s; }
   plain() {
@@ -573,15 +573,13 @@ export function eqv(a, b) {
   if (a instanceof Lazy) a = realize(a);
   if (b instanceof Lazy) b = realize(b);
   if (a === null || b === null || a === undefined || b === undefined) return false;
-  // decimals (BEAM, measured): two decimals compare by unscaled+scale
-  // ((= 1.5M 1.50M) false); a decimal and an int/float by value
-  // ((= 1.5M 1.5) true, (= 2M 2) true)
+  // Exact-value equality is transitive across Decimal/Int/finite Float.
+  // Raw collection keyEq still has its separately named representation rule.
   if (a instanceof Dec || b instanceof Dec) {
-    if (a instanceof Dec && b instanceof Dec) return a.u === b.u && a.s === b.s;
+    if (a instanceof Dec && b instanceof Dec) return decCmp(a, b) === 0;
     const d = a instanceof Dec ? a : b, o = a instanceof Dec ? b : a;
     if (!isNumV(o)) return false;
-    if (o instanceof Flt) return Number(d.plain()) === o.v;
-    return decCmp(d, o) === 0;
+    return (o instanceof Flt ? decimalFloatCompare(d, o.v) : decCmp(d, o)) === 0;
   }
   // JS numeric equality compares BigInt/Number without rounding the BigInt.
   if (isNumV(a)) return isNumV(b) && numOf(a) == numOf(b); // eslint-disable-line eqeqeq
@@ -648,7 +646,12 @@ export function compare(a, b) {
   switch (ra) {
     case 0: {
       if (a instanceof Dec || b instanceof Dec) {
-        if (a instanceof Flt || b instanceof Flt) { const x = a instanceof Dec ? Number(a.plain()) : a.v, y = b instanceof Dec ? Number(b.plain()) : b.v; return x < y ? -1 : x > y ? 1 : 0; }
+        if (a instanceof Flt || b instanceof Flt) {
+          const c = a instanceof Dec ? decimalFloatCompare(a, b.v) : -decimalFloatCompare(b, a.v);
+          // Foreign JS NaN remains outside the finite-number language profile.
+          // Retain the existing comparator tie without calling it equality.
+          return Number.isNaN(c) ? 0 : c;
+        }
         return decCmp(a, b);
       }
       const x = numOf(a), y = numOf(b); return x < y ? -1 : x > y ? 1 : 0;
@@ -703,36 +706,188 @@ function needNum(op, a, b) {
 // (+ 1.5M 1) 2.5M; (* 1.5M 2) 3.0M; (* 1.5M 1.5M) 2.25M; (/ 1M 4) 0.25M;
 // (/ 6M 3) 2M; (/ 1.20M 3) 0.40M; (/ 1M 3) raises (non-terminating);
 // a float operand raises; (- 1.5M) -1.5M. + and - align to the larger
-// scale, * adds scales, / keeps the dividend's scale when exact, else the
-// smallest scale that terminates.
+// scale, * adds scales, / computes a terminating scale from the reduced
+// coefficient denominator and the preferred operand-scale difference.
 const isDec = (x) => x instanceof Dec;
 function toDec(x, op) {
   if (x instanceof Dec) return x;
   if (typeof x === "number" || typeof x === "bigint") return new Dec(BigInt(x), 0);
-  if (x instanceof Flt) throw new BLError("a float cannot enter decimal arithmetic: " + printStr(x) + " (use decimal/from-float to approximate on purpose)");
+  if (x instanceof Flt) return decimalOf(x);
   throw new BLError(op + " needs numbers, got " + printStr(x));
 }
 const P10 = (n) => 10n ** BigInt(n);
 function decArith(op, a, b) {
   const x = toDec(a, op), y = toDec(b, op);
   if (op === "*") return new Dec(x.u * y.u, x.s + y.s);
-  if (op === "/") {
-    if (y.u === 0n) throw new BLError("divide by zero");
-    // value = (x.u / 10^x.s) / (y.u / 10^y.s): try scales from the dividend's up
-    for (let s = x.s; s <= x.s + 64; s++) {
-      const num = x.u * P10(s - x.s + y.s), den = y.u;
-      if (num % den === 0n) return new Dec(num / den, s);
-    }
-    throw new BLError("non-terminating decimal expansion; no exact representable decimal result");
-  }
+  if (op === "/") return decimalDivide(x, y);
   const s = Math.max(x.s, y.s), xu = x.u * P10(s - x.s), yu = y.u * P10(s - y.s);
   return new Dec(op === "+" ? xu + yu : xu - yu, s);
+}
+// Compare a Decimal with the Float's actual IEEE binary64 value. There is
+// no conversion of the Decimal through Number or the Float through its text.
+// No GCD is needed: the exact cross-products determine the order directly.
+function decimalFloatCompare(decimal, value) {
+  if (!Number.isFinite(value)) return Number.isNaN(value) ? NaN : value > 0 ? -1 : 1;
+  if (value === 0) return decimal.u < 0n ? -1 : decimal.u > 0n ? 1 : 0;
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value, false);
+  const bits = view.getBigUint64(0, false), exponent = Number((bits >> 52n) & 0x7ffn);
+  const fraction = bits & ((1n << 52n) - 1n);
+  let numerator = exponent === 0 ? fraction : fraction + (1n << 52n);
+  if ((bits >> 63n) !== 0n) numerator = -numerator;
+  const shift = exponent === 0 ? -1074 : exponent - 1075;
+  let left = decimal.u, right = numerator * P10(decimal.s);
+  if (shift < 0) left <<= BigInt(-shift); else right <<= BigInt(shift);
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 function decCmp(a, b) {
   const x = toDec(a, "compare"), y = toDec(b, "compare"), s = Math.max(x.s, y.s);
   const xu = x.u * P10(s - x.s), yu = y.u * P10(s - y.s);
   return xu < yu ? -1 : xu > yu ? 1 : 0;
 }
+
+// Decimal's named host ABI uses the same representation and exact arithmetic
+// as ordinary operators. Scale is explicit; no ambient rounding context or
+// guessed termination ceiling participates in division.
+function decimalClause(operation) {
+  const error = new BLError("no function clause matching BeamLisp.Decimal." + operation);
+  error.blType = kw("Elixir.FunctionClauseError");
+  throw error;
+}
+function decimalFailure(type, message, ...entries) {
+  throw new BLError(message, hashMap(kw("type"), kw(type), ...entries));
+}
+function needDecimal(value, operation) { return value instanceof Dec ? value : decimalClause(operation); }
+function decimalInteger(value, operation) {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isSafeInteger(value)) return BigInt(value);
+  return decimalClause(operation);
+}
+function decimalScaleValue(value, operation) {
+  if (typeof value === "bigint" && value >= 0n && value <= BigInt(MAX)) return Number(value);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  return decimalClause(operation);
+}
+export function decimalScaled(coefficient, scale) {
+  return new Dec(decimalInteger(coefficient, "of/2"), decimalScaleValue(scale, "of/2"));
+}
+export function decimalParse(value) {
+  if (typeof value !== "string") return decimalClause("parse/1");
+  const result = parseDec(value);
+  if (!result) decimalFailure("decimal/parse", "not a decimal: " + JSON.stringify(value), kw("value"), value);
+  return result;
+}
+export function decimalOf(value) {
+  if (value instanceof Dec) return value;
+  if (typeof value === "bigint" || (typeof value === "number" && Number.isSafeInteger(value))) return new Dec(BigInt(value), 0);
+  if (typeof value === "string") return decimalParse(value);
+  if (value instanceof Flt) decimalFailure("decimal/inexact-operand", "a float cannot enter decimal arithmetic: " + printStr(value) + " (use decimal/from-float to approximate on purpose)", kw("value"), value);
+  decimalFailure("decimal/coerce", "cannot coerce to decimal: " + printStr(value), kw("value"), value);
+}
+export function decimalCoefficient(value) { return norm(needDecimal(value, "unscaled/1").u); }
+export function decimalScale(value) { return needDecimal(value, "scale/1").s; }
+export function decimalPrecision(value) {
+  const coefficient = needDecimal(value, "precision/1").u;
+  return (coefficient < 0n ? -coefficient : coefficient).toString().length;
+}
+export function decimalSign(value) {
+  const coefficient = needDecimal(value, "signum/1").u;
+  return coefficient < 0n ? -1 : coefficient > 0n ? 1 : 0;
+}
+export function decimalNegate(value) { const d = needDecimal(value, "neg/1"); return new Dec(-d.u, d.s); }
+export function decimalAbs(value) { const d = needDecimal(value, "abs/1"); return new Dec(d.u < 0n ? -d.u : d.u, d.s); }
+export function decimalCompare(a, b) { return decCmp(decimalOf(a), decimalOf(b)); }
+export function decimalAdd(a, b) { return decArith("+", needDecimal(a, "align/2"), needDecimal(b, "align/2")); }
+export function decimalSubtract(a, b) { return decArith("-", needDecimal(a, "align/2"), needDecimal(b, "align/2")); }
+export function decimalMultiply(a, b) { return decArith("*", needDecimal(a, "mul/2"), needDecimal(b, "mul/2")); }
+const DECIMAL_MODES = new Set(["half-even", "half-up", "half-down", "ceiling", "floor", "down", "up", "unnecessary"]);
+function decimalMode(mode, operation) {
+  if (!(mode instanceof Kw) || !DECIMAL_MODES.has(mode.fq)) return decimalClause(operation);
+  return mode.fq;
+}
+function decimalRoundQuotient(numerator, denominator, mode) {
+  if (denominator < 0n) { numerator = -numerator; denominator = -denominator; }
+  const quotient = numerator / denominator, remainder = numerator % denominator;
+  if (remainder === 0n) return quotient;
+  const direction = numerator < 0n ? -1n : 1n;
+  if (mode === "unnecessary") decimalFailure("decimal/rounding-necessary", "rounding necessary");
+  if (mode === "down") return quotient;
+  if (mode === "up" || (mode === "ceiling" && direction > 0n) || (mode === "floor" && direction < 0n)) return quotient + direction;
+  if (mode === "ceiling" || mode === "floor") return quotient;
+  const twice = 2n * (remainder < 0n ? -remainder : remainder);
+  const increment = twice > denominator || (twice === denominator &&
+    (mode === "half-up" || (mode === "half-even" && quotient % 2n !== 0n)));
+  return increment ? quotient + direction : quotient;
+}
+export function decimalDivide(a, b, scale, rounding) {
+  const operation = scale === undefined ? "div/2" : "div/4";
+  a = needDecimal(a, operation); b = needDecimal(b, operation);
+  let mode;
+  if (scale !== undefined) {
+    scale = decimalScaleValue(scale, operation);
+    mode = decimalMode(rounding, operation);
+  }
+  if (b.u === 0n) decimalFailure("decimal/divide-by-zero", "decimal division by zero", kw("dividend"), a);
+  if (scale === undefined) {
+    let numerator = a.u < 0n ? -a.u : a.u, denominator = b.u < 0n ? -b.u : b.u;
+    while (denominator !== 0n) { const remainder = numerator % denominator; numerator = denominator; denominator = remainder; }
+    denominator = (b.u < 0n ? -b.u : b.u) / numerator;
+    let twos = 0, fives = 0;
+    while (denominator % 2n === 0n) { denominator /= 2n; twos++; }
+    while (denominator % 5n === 0n) { denominator /= 5n; fives++; }
+    if (denominator !== 1n) decimalFailure("decimal/non-terminating", "non-terminating decimal expansion; no exact representable decimal result", kw("dividend"), a, kw("divisor"), b);
+    scale = Math.max(0, a.s - b.s + Math.max(twos, fives));
+    mode = "unnecessary";
+  }
+  const shift = scale + b.s - a.s;
+  const numerator = shift >= 0 ? a.u * P10(shift) : a.u;
+  const denominator = shift >= 0 ? b.u : b.u * P10(-shift);
+  return new Dec(decimalRoundQuotient(numerator, denominator, mode), scale);
+}
+export function decimalRescale(value, scale, rounding = kw("unnecessary")) {
+  const d = needDecimal(value, "rescale/3"), target = decimalScaleValue(scale, "rescale/3"), mode = decimalMode(rounding, "rescale/3");
+  return new Dec(target >= d.s ? d.u * P10(target - d.s) : decimalRoundQuotient(d.u, P10(d.s - target), mode), target);
+}
+export function decimalStrip(value) {
+  const d = needDecimal(value, "strip_zeros/1");
+  if (d.u === 0n) return new Dec(0n, 0);
+  let coefficient = d.u, scale = d.s;
+  while (scale > 0 && coefficient % 10n === 0n) { coefficient /= 10n; scale--; }
+  return new Dec(coefficient, scale);
+}
+export function decimalMove(value, amount, left) {
+  const d = needDecimal(value, "move_point/2"), n = decimalInteger(amount, "move_point/2");
+  if (n < -BigInt(MAX) || n > BigInt(MAX)) return decimalClause("move_point/2");
+  const scale = d.s + (left ? Number(n) : -Number(n));
+  return scale >= 0 ? new Dec(d.u, scale) : new Dec(d.u * P10(-scale), 0);
+}
+export function decimalIntegerPart(value) { const d = needDecimal(value, "to_integer/1"); return norm(d.u / P10(d.s)); }
+export function decimalFloat(value) {
+  const number = Number(needDecimal(value, "to_float/1").plain());
+  if (!Number.isFinite(number)) { const error = new BLError("decimal is outside the finite Float range"); error.blType = kw("Elixir.ArgumentError"); throw error; }
+  return flt(number);
+}
+export function shortestFloatText(value) {
+  const number = value instanceof Flt ? value.v : decimalClause("from_float/1");
+  if (!Number.isFinite(number)) return decimalClause("from_float/1");
+  if (number === 0) return Object.is(number, -0) ? "-0.0" : "0.0";
+  // OTP 17's short-float policy chooses the shorter decimal spelling (fixed
+  // on ties), with a mandatory decimal point. At |x| >= 2^53 it deliberately
+  // chooses scientific notation. The significant digits remain JS's shortest
+  // round-tripping binary64 digits; no Decimal arithmetic consumes a Float.
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(Math.abs(number)));
+  const raw = match[1] + (match[2] || "");
+  const leading = /^0*/.exec(raw)[0].length;
+  const digits = raw.slice(leading).replace(/0+$/, "");
+  const exponent = match[1].length - 1 + Number(match[3] || 0) - leading;
+  const scientific = digits[0] + "." + (digits.slice(1) || "0") + "e" + exponent;
+  const fixed = exponent >= digits.length - 1 ? digits + "0".repeat(exponent + 1 - digits.length) + ".0"
+    : exponent >= 0 ? digits.slice(0, exponent + 1) + "." + digits.slice(exponent + 1)
+    : "0." + "0".repeat(-exponent - 1) + digits;
+  const body = Math.abs(number) >= 9007199254740992 || scientific.length < fixed.length ? scientific : fixed;
+  return (number < 0 ? "-" : "") + body;
+}
+export function decimalFromFloat(value) { return decimalParse(shortestFloatText(value)); }
 
 export function add(a, b) {
   if (typeof a === "number" && typeof b === "number") { const r = a + b; if (r <= MAX && r >= MIN) return r; return norm(BigInt(a) + BigInt(b)); }

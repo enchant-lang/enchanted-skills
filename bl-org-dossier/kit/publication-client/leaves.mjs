@@ -182,8 +182,8 @@ export const LEAVES = {
   "Elixir.BeamLisp.AtomGuard/reset/0": () => OK,
   "Elixir.BeamLisp.AtomGuard/check!/1": () => OK,
   "Elixir.BeamLisp.AtomGuard/to_atom/1": (s) => R.kw(s),
-  "Elixir.BeamLisp.Decimal/unscaled/1": (d) => (d.u >= BigInt(Number.MIN_SAFE_INTEGER) && d.u <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(d.u) : d.u),
-  "Elixir.BeamLisp.Decimal/scale/1": (d) => d.s,
+  "Elixir.BeamLisp.Decimal/unscaled/1": R.decimalCoefficient,
+  "Elixir.BeamLisp.Decimal/scale/1": R.decimalScale,
   "Elixir.BeamLisp.Decimal/parse/1": (s) => { const d = R.parseDec(s); return d === null ? ERROR : T(OK, d); },
   "Elixir.BeamLisp.Vector/to_list/1": (v) => v.toList(),
   "Elixir.BeamLisp.Vector/new/1": (l) => R.vecFromArray(A.toArray(l)),
@@ -570,12 +570,7 @@ Object.assign(LEAVES, {
   "erlang/is_float/1": (x) => x instanceof R.Flt,
   // `float_to_binary(f, [:short])`: the shortest round-tripping digits, always
   // with a `.` (0.1, 100.0, 1.0e21) — JS's shortest digits, Erlang's spelling
-  "erlang/float_to_binary/2": (f) => {
-    const v = f instanceof R.Flt ? f.v : f;
-    let s = String(v);
-    if (/e/.test(s)) { let [m, e] = s.split("e"); if (!m.includes(".")) m += ".0"; return m + "e" + (e.startsWith("+") ? e.slice(1) : e); }
-    return s.includes(".") || !Number.isFinite(v) ? s : s + ".0";
-  },
+  "erlang/float_to_binary/2": (f) => R.shortestFloatText(f),
   "Elixir.Integer/to_string/2": (n, base) => n.toString(base).toUpperCase(),
   "erlang/is_number/1": (x) => R.isNumber(x),
   "erlang/is_bitstring/1": (x) => typeof x === "string",
