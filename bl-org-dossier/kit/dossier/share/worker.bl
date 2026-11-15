@@ -87,7 +87,7 @@
            (swap! jobs assoc document "idle") (File/rm_rf dir) (File/rm tar))
           (catch error
            (save-state! document (assoc @current "phase" "failed" "error" (ex-message error)))
-           (swap! jobs assoc document "failed")))))))))
+           (swap! jobs assoc document "failed"))))))))))
    (inspect document))))
 (defn revoke! [document]
  (global/trans (tuple (tuple :dossier/share-document document) (erlang/self))

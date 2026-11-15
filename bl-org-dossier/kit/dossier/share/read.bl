@@ -39,6 +39,6 @@
           (let [opts (Plug.Static/init (list (tuple :at "/") (tuple :from (str directory "/public"))
                        (tuple :gzip false) (tuple :cache_control_for_etags "private, no-store")))
                 response (Plug.Static/call (Map/put c :path_info (String/split (get file "file") "/")) opts)]
-           (if (= :unset (:state response)) (unavailable c) response)))))
+           (if (= :unset (:state response)) (unavailable c) response))))))
       (unavailable c))))
    (catch error (web/text c 503 "Le service d'accès est momentanément indisponible.")))))
