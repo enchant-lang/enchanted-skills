@@ -74,8 +74,8 @@
              (js/confirm (bl->js (if (= "link" (get (audience) "visibility")) "Toute personne avec le lien pourra lire ce dossier. Continuer ?"
                                   (str "Limiter l’accès aux " (count (get (audience) "clients")) " client(s) sélectionné(s) ?")))))
     (request! "publish" refresh!))))
-  (doseq [radio (array-seq (.querySelectorAll js/document "input[name=publication-visibility]"))]
-   (.addEventListener radio "change" (fn [] (swap! draft assoc "visibility" (js->bl (.-value radio))) (paint!))))
+  (.forEach (.querySelectorAll js/document "input[name=publication-visibility]")
+   (fn [radio] (.addEventListener radio "change" (fn [] (swap! draft assoc "visibility" (js->bl (.-value radio))) (paint!))) nil))
   (.addEventListener ($ "#publication-search") "input" render-clients!)
   (.addEventListener ($ "#publication-revoke") "click" (fn [] (request! "revoke" refresh!)))
   (.addEventListener ($ "#publication-copy") "click" (fn []
