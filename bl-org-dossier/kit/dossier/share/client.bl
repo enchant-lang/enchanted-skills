@@ -52,9 +52,11 @@
  (let [container ($ "#publication-clients") term (String/downcase (js->bl (.-value ($ "#publication-search"))))]
   (set! (.-textContent container) "")
   (doseq [client @clients :when (String/contains? (String/downcase (str (get client "name") " " (get client "email"))) term)]
-   (let [label (.createElement js/document "label") input (.createElement js/document "input") text (.createElement js/document "span") id (get client "id")]
+   (let [label (.createElement js/document "label") input (.createElement js/document "input") text (.createElement js/document "span") id (get client "id")
+         confirmed (or (get client "verified") (contains? #{"invitation" "invitation-accepted"} (get client "verification")))]
     (set! (.-type input) "checkbox") (set! (.-checked input) (contains? (set (get (audience) "clients")) id))
-    (set! (.-textContent text) (bl->js (str (get client "name") " · " (get client "email"))))
+    (set! (.-disabled input) (and (not confirmed) (not (.-checked input))))
+    (set! (.-textContent text) (bl->js (str (get client "name") " · " (get client "email") (when-not confirmed " · identité à confirmer"))))
     (.addEventListener input "change" (fn []
      (swap! draft assoc "clients" (vec (if (.-checked input) (conj (set (get (audience) "clients")) id) (disj (set (get (audience) "clients")) id)))) (paint!)))
     (.appendChild label input) (.appendChild label text) (.appendChild container label)))))
