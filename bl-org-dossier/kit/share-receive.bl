@@ -4,10 +4,15 @@
 (def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
 (def owner (System/fetch_env! "DOSSIER_SHARE_PUBLISHER"))
 (def authority (accounts/from-env))
+(when-not (or authority (= "1" (System/get_env "DOSSIER_SHARE_LEGACY_LINKS")))
+ (throw (ex-info "Configure the shared account layer before accepting publications." {})))
+(defn durable! [path]
+ (let [[_ status] (System/cmd "sync" (list "-f" path))]
+  (when-not (= 0 status) (model/refuse "Publication storage did not acknowledge durability"))))
 (defn read-json [p] (when (File/regular? p) (json/decode (File/read! p))))
 (defn atomic-json! [p v]
   (let [tmp (str p ".tmp-" (System/pid))]
-    (File/write! tmp (json/encode v)) (File/chmod! tmp 416) (File/rename! tmp p)))
+    (File/write! tmp (json/encode v)) (File/chmod! tmp 416) (File/rename! tmp p) (durable! (Path/dirname p))))
 (defn capacity! []
   (let [[disk dc] (System/cmd "df" (list "-PB1" root))
         [used uc] (System/cmd "du" (list "-sb" (str root "/objects")))
@@ -65,7 +70,8 @@
                 (doseq [f (archive/walk staging)]
                   (File/chmod! (str staging "/" (:path f)) (if (= :dir (:type f)) 488 416)))
                 (File/chmod! staging 488)
-                (if (File/exists? object) (File/rm_rf staging) (File/rename! staging object))))
+                (if (File/exists? object) (File/rm_rf staging) (File/rename! staging object))
+                (durable! object)))
             (let [central-prior (when authority (accounts/call! authority "publication-status" {"id" id}))
                   replay (= operation (get central-prior "operation"))
                   basis (if (and central-prior (not replay)) (merge prior central-prior) prior)

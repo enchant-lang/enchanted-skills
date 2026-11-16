@@ -1,6 +1,8 @@
 (ns dossier.share.reader (:require [web] [dossier.share.read :as reader] [ora.accounts.client :as accounts]))
 (def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
 (def host (accounts/from-env))
+(when-not (or host (= "1" (System/get_env "DOSSIER_SHARE_LEGACY_LINKS")))
+ (throw (ex-info "Configure the shared account layer before starting the publication reader." {})))
 (web/serve {:port (String/to_integer (System/get_env "PORT" "4061")) :ip (tuple 127 0 0 1)
             :plug #(reader/router root host %) :log :off})
 (Process/sleep :infinity)

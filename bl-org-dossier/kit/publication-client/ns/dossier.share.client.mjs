@@ -371,7 +371,7 @@ const v_term$U3796 = (yield* C.call(L.LEAVES["Elixir.String/downcase/1"], [t200]
 const t201 = v_container$U3795;
 const t202 = "";
 J.result((J.argument(t201)["textContent"] = J.argument(t202)));
-const t263 = ((()=>{const f_fnself$U3798 = C.fn("f_fnself$U3798", 2, function*(rt, args){const a0=args[0];const a1=args[1];C203: {
+const t280 = ((()=>{const f_fnself$U3798 = C.fn("f_fnself$U3798", 2, function*(rt, args){const a0=args[0];const a1=args[1];C203: {
 const v_$U$U$U3797$U$Uc$U3799 = a0;
 const v_client$U3800 = a1;
 const t204 = (yield* C.call(N_rt.d_get, [v_client$U3800, "name"], N_rt.d_call_invoke, S_39));
@@ -393,318 +393,346 @@ const t216 = J.argument(t215)["createElement"];
 const t217 = "span";
 const v_text$U3803 = J.result(Reflect.apply(t216, J.argument(t215), [J.argument(t217)]));
 const v_id$U3804 = (yield* C.call(N_rt.d_get, [v_client$U3800, "id"], N_rt.d_call_invoke, S_39));
-const t218 = v_input$U3802;
-const t219 = "checkbox";
-J.result((J.argument(t218)["type"] = J.argument(t219)));
-const t220 = v_input$U3802;
-const t221 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_39));
-const t222 = (yield* C.call(N_rt.d_get, [t221, "clients"], N_rt.d_call_invoke, S_39));
-const t223 = (yield* C.call(N_rt.d_set, [t222], N_rt.d_call_invoke, S_39));
-const t224 = (yield* C.call(N_rt.d_contains$Q, [t223, v_id$U3804], N_rt.d_call_invoke, S_39));
-J.result((J.argument(t220)["checked"] = J.argument(t224)));
-const t225 = v_text$U3803;
-const t226 = (yield* C.call(N_rt.d_get, [v_client$U3800, "name"], N_rt.d_call_invoke, S_39));
-const t227 = (yield* C.call(N_rt.d_get, [v_client$U3800, "email"], N_rt.d_call_invoke, S_39));
-const t228 = R.list(t226, " · ", t227);
-const t229 = (yield* C.call(N_rt.d_str$Uv, [t228], N_rt.d_call_invoke, S_39));
-const t230 = J.result(J.blToJS(t229));
-J.result((J.argument(t225)["textContent"] = J.argument(t230)));
-const t231 = v_input$U3802;
-const t232 = J.argument(t231)["addEventListener"];
-const t233 = "change";
-const t253 = ((()=>{const f_fnself$U3805 = C.fn("f_fnself$U3805", 0, function*(rt, args){C234: {
-const t235 = E_["fetch!"]("core", "assoc");
-const t236 = v_input$U3802;
-let t243;
-B244: {
-if (R.truthy(J.result(J.argument(t236)["checked"]))) {
-const t245 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
-const t246 = (yield* C.call(N_rt.d_get, [t245, "clients"], N_rt.d_call_invoke, S_33));
-const t247 = (yield* C.call(N_rt.d_set, [t246], N_rt.d_call_invoke, S_33));
-t243 = (yield* C.call(N_rt.d_conj, [t247, v_id$U3804], N_rt.d_call_invoke, S_33)); break B244;
+const v_or_tmp$U$U3805$U$Uc$U3806 = (yield* C.call(N_rt.d_get, [v_client$U3800, "verified"], N_rt.d_call_invoke, S_39));
+let t221;
+B222: {
+if (R.truthy(v_or_tmp$U$U3805$U$Uc$U3806)) {
+t221 = v_or_tmp$U$U3805$U$Uc$U3806; break B222;
 } else {
-const t248 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
-const t249 = (yield* C.call(N_rt.d_get, [t248, "clients"], N_rt.d_call_invoke, S_33));
-const t250 = (yield* C.call(N_rt.d_set, [t249], N_rt.d_call_invoke, S_33));
-t243 = (yield* C.call(N_rt.d_disj, [t250, v_id$U3804], N_rt.d_call_invoke, S_33)); break B244;
+const t223 = R.list("invitation", "invitation-accepted");
+const t224 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Set/new/1"], [t223], N_rt.d_call_invoke, S_39));
+const t225 = (yield* C.call(N_rt.d_get, [v_client$U3800, "verification"], N_rt.d_call_invoke, S_39));
+t221 = (yield* C.call(N_rt.d_contains$Q, [t224, t225], N_rt.d_call_invoke, S_39)); break B222;
 }
 }
-const t251 = (yield* C.call(N_core.d_vec, [t243], N_rt.d_call_invoke, S_33));
-const t252 = R.list("clients", t251);
-(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/swap!/3"], [d_draft, t235, t252], N_rt.d_call_invoke, S_33));
+const v_confirmed$U3807 = t221;
+const t226 = v_input$U3802;
+const t227 = "checkbox";
+J.result((J.argument(t226)["type"] = J.argument(t227)));
+const t228 = v_input$U3802;
+const t229 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_39));
+const t230 = (yield* C.call(N_rt.d_get, [t229, "clients"], N_rt.d_call_invoke, S_39));
+const t231 = (yield* C.call(N_rt.d_set, [t230], N_rt.d_call_invoke, S_39));
+const t232 = (yield* C.call(N_rt.d_contains$Q, [t231, v_id$U3804], N_rt.d_call_invoke, S_39));
+J.result((J.argument(t228)["checked"] = J.argument(t232)));
+const t233 = v_input$U3802;
+const v_and_tmp$U$U3808$U$Uc$U3809 = (yield* C.call(N_rt.d_not$U, [v_confirmed$U3807], N_rt.d_call_invoke, S_39));
+let t236;
+B237: {
+if (R.truthy(v_and_tmp$U$U3808$U$Uc$U3809)) {
+const t238 = v_input$U3802;
+const t239 = J.result(J.argument(t238)["checked"]);
+t236 = (yield* C.call(N_rt.d_not$U, [t239], N_rt.d_call_invoke, S_39)); break B237;
+} else {
+t236 = v_and_tmp$U$U3808$U$Uc$U3809; break B237;
+}
+}
+const t240 = t236;
+J.result((J.argument(t233)["disabled"] = J.argument(t240)));
+const t241 = v_text$U3803;
+const t242 = (yield* C.call(N_rt.d_get, [v_client$U3800, "name"], N_rt.d_call_invoke, S_39));
+const t243 = (yield* C.call(N_rt.d_get, [v_client$U3800, "email"], N_rt.d_call_invoke, S_39));
+const t244 = (R.truthy(v_confirmed$U3807) ? null : " · identité à confirmer");
+const t245 = R.list(t242, " · ", t243, t244);
+const t246 = (yield* C.call(N_rt.d_str$Uv, [t245], N_rt.d_call_invoke, S_39));
+const t247 = J.result(J.blToJS(t246));
+J.result((J.argument(t241)["textContent"] = J.argument(t247)));
+const t248 = v_input$U3802;
+const t249 = J.argument(t248)["addEventListener"];
+const t250 = "change";
+const t270 = ((()=>{const f_fnself$U3810 = C.fn("f_fnself$U3810", 0, function*(rt, args){C251: {
+const t252 = E_["fetch!"]("core", "assoc");
+const t253 = v_input$U3802;
+let t260;
+B261: {
+if (R.truthy(J.result(J.argument(t253)["checked"]))) {
+const t262 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
+const t263 = (yield* C.call(N_rt.d_get, [t262, "clients"], N_rt.d_call_invoke, S_33));
+const t264 = (yield* C.call(N_rt.d_set, [t263], N_rt.d_call_invoke, S_33));
+t260 = (yield* C.call(N_rt.d_conj, [t264, v_id$U3804], N_rt.d_call_invoke, S_33)); break B261;
+} else {
+const t265 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
+const t266 = (yield* C.call(N_rt.d_get, [t265, "clients"], N_rt.d_call_invoke, S_33));
+const t267 = (yield* C.call(N_rt.d_set, [t266], N_rt.d_call_invoke, S_33));
+t260 = (yield* C.call(N_rt.d_disj, [t267, v_id$U3804], N_rt.d_call_invoke, S_33)); break B261;
+}
+}
+const t268 = (yield* C.call(N_core.d_vec, [t260], N_rt.d_call_invoke, S_33));
+const t269 = R.list("clients", t268);
+(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/swap!/3"], [d_draft, t252, t269], N_rt.d_call_invoke, S_33));
 return (yield* C.call(d_paint$B, [], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3805 with " + [].join(" "));}, false);return f_fnself$U3805;})());
-J.result(Reflect.apply(t232, J.argument(t231), [J.argument(t233), J.argument(t253)]));
-const t254 = v_label$U3801;
-const t255 = J.argument(t254)["appendChild"];
-const t256 = v_input$U3802;
-J.result(Reflect.apply(t255, J.argument(t254), [J.argument(t256)]));
-const t257 = v_label$U3801;
-const t258 = J.argument(t257)["appendChild"];
-const t259 = v_text$U3803;
-J.result(Reflect.apply(t258, J.argument(t257), [J.argument(t259)]));
-const t260 = v_container$U3795;
-const t261 = J.argument(t260)["appendChild"];
-const t262 = v_label$U3801;
-J.result(Reflect.apply(t261, J.argument(t260), [J.argument(t262)]));
+throw new R.BLError("no matching clause for f_fnself$U3810 with " + [].join(" "));}, false);return f_fnself$U3810;})());
+J.result(Reflect.apply(t249, J.argument(t248), [J.argument(t250), J.argument(t270)]));
+const t271 = v_label$U3801;
+const t272 = J.argument(t271)["appendChild"];
+const t273 = v_input$U3802;
+J.result(Reflect.apply(t272, J.argument(t271), [J.argument(t273)]));
+const t274 = v_label$U3801;
+const t275 = J.argument(t274)["appendChild"];
+const t276 = v_text$U3803;
+J.result(Reflect.apply(t275, J.argument(t274), [J.argument(t276)]));
+const t277 = v_container$U3795;
+const t278 = J.argument(t277)["appendChild"];
+const t279 = v_label$U3801;
+J.result(Reflect.apply(t278, J.argument(t277), [J.argument(t279)]));
 return null;
 } else {
 return null;
 }
 }
 throw new R.BLError("no matching clause for f_fnself$U3798 with " + [R.printStr(a0), R.printStr(a1)].join(" "));}, false);return f_fnself$U3798;})());
-const t264 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_clients], N_rt.d_call_invoke, S_40));
-(yield* C.call(N_core.d_reduce, [t263, null, t264], N_rt.d_call_invoke, S_40));
+const t281 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_clients], N_rt.d_call_invoke, S_40));
+(yield* C.call(N_core.d_reduce, [t280, null, t281], N_rt.d_call_invoke, S_40));
 return null;
 }
 throw new R.BLError("no matching clause for render-clients! with " + [].join(" "));}, false);return f_fnself$U3794;})());
-export const d_load_clients$B = ((()=>{const f_fnself$U3806 = C.fn("load-clients!", 0, function*(rt, args){C265: {
-const t266 = globalThis;
-const t267 = t266["fetch"];
-const t268 = "publication/clients";
-const t269 = "no-store";
-const t270 = J.result(({["cache"]: J.argument(t269)}));
-const t271 = J.result(Reflect.apply(t267, t266, [J.argument(t268), J.argument(t270)]));
-const t272 = J.argument(t271)["then"];
-const t276 = ((()=>{const f_fnself$U3807 = C.fn("f_fnself$U3807", 1, function*(rt, args){const a0=args[0];C273: {
-const v_response$U3808 = a0;
-const t274 = v_response$U3808;
-const t275 = J.argument(t274)["json"];
-return J.result(Reflect.apply(t275, J.argument(t274), []));
+export const d_load_clients$B = ((()=>{const f_fnself$U3811 = C.fn("load-clients!", 0, function*(rt, args){C282: {
+const t283 = globalThis;
+const t284 = t283["fetch"];
+const t285 = "publication/clients";
+const t286 = "no-store";
+const t287 = J.result(({["cache"]: J.argument(t286)}));
+const t288 = J.result(Reflect.apply(t284, t283, [J.argument(t285), J.argument(t287)]));
+const t289 = J.argument(t288)["then"];
+const t293 = ((()=>{const f_fnself$U3812 = C.fn("f_fnself$U3812", 1, function*(rt, args){const a0=args[0];C290: {
+const v_response$U3813 = a0;
+const t291 = v_response$U3813;
+const t292 = J.argument(t291)["json"];
+return J.result(Reflect.apply(t292, J.argument(t291), []));
 }
-throw new R.BLError("no matching clause for f_fnself$U3807 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3807;})());
-const t277 = J.result(Reflect.apply(t272, J.argument(t271), [J.argument(t276)]));
-const t278 = J.argument(t277)["then"];
-const t287 = ((()=>{const f_fnself$U3809 = C.fn("f_fnself$U3809", 1, function*(rt, args){const a0=args[0];C279: {
-const v_value$U3810 = a0;
-const t280 = v_value$U3810;
-const v_value$U3811 = J.result(J.jsToBL(t280));
-let t283;
-B284: {
-if (R.truthy((yield* C.call(N_rt.d_get, [v_value$U3811, "configured"], N_rt.d_call_invoke, S_32)))) {
-const t285 = R.vec();
-const t286 = (yield* C.call(N_rt.d_get, [v_value$U3811, "clients", t285], N_rt.d_call_invoke, S_32));
-(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/reset!/2"], [d_clients, t286], N_rt.d_call_invoke, S_32));
-t283 = (yield* C.call(d_render_clients$B, [], N_rt.d_call_invoke, S_32)); break B284;
+throw new R.BLError("no matching clause for f_fnself$U3812 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3812;})());
+const t294 = J.result(Reflect.apply(t289, J.argument(t288), [J.argument(t293)]));
+const t295 = J.argument(t294)["then"];
+const t304 = ((()=>{const f_fnself$U3814 = C.fn("f_fnself$U3814", 1, function*(rt, args){const a0=args[0];C296: {
+const v_value$U3815 = a0;
+const t297 = v_value$U3815;
+const v_value$U3816 = J.result(J.jsToBL(t297));
+let t300;
+B301: {
+if (R.truthy((yield* C.call(N_rt.d_get, [v_value$U3816, "configured"], N_rt.d_call_invoke, S_32)))) {
+const t302 = R.vec();
+const t303 = (yield* C.call(N_rt.d_get, [v_value$U3816, "clients", t302], N_rt.d_call_invoke, S_32));
+(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/reset!/2"], [d_clients, t303], N_rt.d_call_invoke, S_32));
+t300 = (yield* C.call(d_render_clients$B, [], N_rt.d_call_invoke, S_32)); break B301;
 } else {
-t283 = (yield* C.call(d_txt$B, ["#publication-clients", "Le répertoire clients n'est pas connecté."], N_rt.d_call_invoke, S_32)); break B284;
+t300 = (yield* C.call(d_txt$B, ["#publication-clients", "Le répertoire clients n'est pas connecté."], N_rt.d_call_invoke, S_32)); break B301;
 }
 }
 return null;
 }
-throw new R.BLError("no matching clause for f_fnself$U3809 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3809;})());
-const t288 = J.result(Reflect.apply(t278, J.argument(t277), [J.argument(t287)]));
-const t289 = J.argument(t288)["catch"];
-const t291 = ((()=>{const f_fnself$U3812 = C.fn("f_fnself$U3812", 1, function*(rt, args){const a0=args[0];C290: {
-const v_$U$U3813 = a0;
+throw new R.BLError("no matching clause for f_fnself$U3814 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3814;})());
+const t305 = J.result(Reflect.apply(t295, J.argument(t294), [J.argument(t304)]));
+const t306 = J.argument(t305)["catch"];
+const t308 = ((()=>{const f_fnself$U3817 = C.fn("f_fnself$U3817", 1, function*(rt, args){const a0=args[0];C307: {
+const v_$U$U3818 = a0;
 (yield* C.call(d_txt$B, ["#publication-clients", "Le répertoire clients est indisponible."], N_rt.d_call_invoke, S_32));
 return null;
 }
-throw new R.BLError("no matching clause for f_fnself$U3812 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3812;})());
-return J.result(Reflect.apply(t289, J.argument(t288), [J.argument(t291)]));
+throw new R.BLError("no matching clause for f_fnself$U3817 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3817;})());
+return J.result(Reflect.apply(t306, J.argument(t305), [J.argument(t308)]));
 }
-throw new R.BLError("no matching clause for load-clients! with " + [].join(" "));}, false);return f_fnself$U3806;})());
-let t438;
-B439: {
+throw new R.BLError("no matching clause for load-clients! with " + [].join(" "));}, false);return f_fnself$U3811;})());
+let t455;
+B456: {
 if (R.truthy(d_root)) {
-const t440 = d_$36$("#publication-open");
-const t441 = J.argument(t440)["addEventListener"];
-const t442 = "click";
-const t449 = ((()=>{const f_fnself$U3814 = C.fn("f_fnself$U3814", 0, function*(rt, args){C443: {
-const t444 = (yield* C.call(d_$36$, ["#publication-sheet"], N_rt.d_call_invoke, S_33));
-const t445 = false;
-J.result((J.argument(t444)["hidden"] = J.argument(t445)));
-const t448 = ((()=>{const f_fnself$U3815 = C.fn("f_fnself$U3815", 0, function*(rt, args){C446: {
+const t457 = d_$36$("#publication-open");
+const t458 = J.argument(t457)["addEventListener"];
+const t459 = "click";
+const t466 = ((()=>{const f_fnself$U3819 = C.fn("f_fnself$U3819", 0, function*(rt, args){C460: {
+const t461 = (yield* C.call(d_$36$, ["#publication-sheet"], N_rt.d_call_invoke, S_33));
+const t462 = false;
+J.result((J.argument(t461)["hidden"] = J.argument(t462)));
+const t465 = ((()=>{const f_fnself$U3820 = C.fn("f_fnself$U3820", 0, function*(rt, args){C463: {
 (yield* C.call(d_load_clients$B, [], N_rt.d_call_invoke, S_33));
-const t447 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
-if (R.truthy((yield* C.call(N_rt.d_get, [t447, "busy"], N_rt.d_call_invoke, S_33)))) {
+const t464 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
+if (R.truthy((yield* C.call(N_rt.d_get, [t464, "busy"], N_rt.d_call_invoke, S_33)))) {
 return (yield* C.call(d_refresh$B, [], N_rt.d_call_invoke, S_34, true));
 } else {
 return null;
 }
 }
-throw new R.BLError("no matching clause for f_fnself$U3815 with " + [].join(" "));}, false);return f_fnself$U3815;})());
-return (yield* C.call(d_request$B, [null, t448], N_rt.d_call_invoke, S_34, true));
+throw new R.BLError("no matching clause for f_fnself$U3820 with " + [].join(" "));}, false);return f_fnself$U3820;})());
+return (yield* C.call(d_request$B, [null, t465], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3814 with " + [].join(" "));}, false);return f_fnself$U3814;})());
-J.result(Reflect.apply(t441, J.argument(t440), [J.argument(t442), J.argument(t449)]));
-const t450 = d_$36$("#publication-close");
-const t451 = J.argument(t450)["addEventListener"];
-const t452 = "click";
-const t456 = ((()=>{const f_fnself$U3816 = C.fn("f_fnself$U3816", 0, function*(rt, args){C453: {
-const t454 = (yield* C.call(d_$36$, ["#publication-sheet"], N_rt.d_call_invoke, S_33));
-const t455 = true;
-return J.result((J.argument(t454)["hidden"] = J.argument(t455)));
+throw new R.BLError("no matching clause for f_fnself$U3819 with " + [].join(" "));}, false);return f_fnself$U3819;})());
+J.result(Reflect.apply(t458, J.argument(t457), [J.argument(t459), J.argument(t466)]));
+const t467 = d_$36$("#publication-close");
+const t468 = J.argument(t467)["addEventListener"];
+const t469 = "click";
+const t473 = ((()=>{const f_fnself$U3821 = C.fn("f_fnself$U3821", 0, function*(rt, args){C470: {
+const t471 = (yield* C.call(d_$36$, ["#publication-sheet"], N_rt.d_call_invoke, S_33));
+const t472 = true;
+return J.result((J.argument(t471)["hidden"] = J.argument(t472)));
 }
-throw new R.BLError("no matching clause for f_fnself$U3816 with " + [].join(" "));}, false);return f_fnself$U3816;})());
-J.result(Reflect.apply(t451, J.argument(t450), [J.argument(t452), J.argument(t456)]));
-const t457 = d_$36$("#publication-update");
-const t458 = J.argument(t457)["addEventListener"];
-const t459 = "click";
-const t529 = ((()=>{const f_fnself$U3817 = C.fn("f_fnself$U3817", 0, function*(rt, args){C460: {
-const t461 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
-const t462 = (yield* C.call(N_rt.d_get, [t461, "url"], N_rt.d_call_invoke, S_33));
-const v_or_tmp$U$U3818$U$Uc$U3819 = (yield* C.call(N_rt.d_not$U, [t462], N_rt.d_call_invoke, S_33));
-let t505;
-B506: {
-if (R.truthy(v_or_tmp$U$U3818$U$Uc$U3819)) {
-t505 = v_or_tmp$U$U3818$U$Uc$U3819; break B506;
+throw new R.BLError("no matching clause for f_fnself$U3821 with " + [].join(" "));}, false);return f_fnself$U3821;})());
+J.result(Reflect.apply(t468, J.argument(t467), [J.argument(t469), J.argument(t473)]));
+const t474 = d_$36$("#publication-update");
+const t475 = J.argument(t474)["addEventListener"];
+const t476 = "click";
+const t546 = ((()=>{const f_fnself$U3822 = C.fn("f_fnself$U3822", 0, function*(rt, args){C477: {
+const t478 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
+const t479 = (yield* C.call(N_rt.d_get, [t478, "url"], N_rt.d_call_invoke, S_33));
+const v_or_tmp$U$U3823$U$Uc$U3824 = (yield* C.call(N_rt.d_not$U, [t479], N_rt.d_call_invoke, S_33));
+let t522;
+B523: {
+if (R.truthy(v_or_tmp$U$U3823$U$Uc$U3824)) {
+t522 = v_or_tmp$U$U3823$U$Uc$U3824; break B523;
 } else {
-const t507 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
-const t508 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
-const t509 = R.vec("visibility", "clients");
-const t510 = (yield* C.call(N_core.d_select_keys, [t508, t509], N_rt.d_call_invoke, S_33));
-const v_or_tmp$U$U3820$U$Uc$U3821 = (yield* C.call(N_rt.d_eqv, [t507, t510], N_rt.d_call_invoke, S_33));
-if (R.truthy(v_or_tmp$U$U3820$U$Uc$U3821)) {
-t505 = v_or_tmp$U$U3820$U$Uc$U3821; break B506;
+const t524 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
+const t525 = (yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/deref/1"], [d_state], N_rt.d_call_invoke, S_33));
+const t526 = R.vec("visibility", "clients");
+const t527 = (yield* C.call(N_core.d_select_keys, [t525, t526], N_rt.d_call_invoke, S_33));
+const v_or_tmp$U$U3825$U$Uc$U3826 = (yield* C.call(N_rt.d_eqv, [t524, t527], N_rt.d_call_invoke, S_33));
+if (R.truthy(v_or_tmp$U$U3825$U$Uc$U3826)) {
+t522 = v_or_tmp$U$U3825$U$Uc$U3826; break B523;
 } else {
-const t511 = globalThis;
-const t512 = t511["confirm"];
-const t513 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
-const t514 = (yield* C.call(N_rt.d_get, [t513, "visibility"], N_rt.d_call_invoke, S_33));
-let t520;
-B521: {
-if (R.truthy((yield* C.call(N_rt.d_eqv, ["link", t514], N_rt.d_call_invoke, S_33)))) {
-t520 = "Toute personne avec le lien pourra lire ce dossier. Continuer ?"; break B521;
+const t528 = globalThis;
+const t529 = t528["confirm"];
+const t530 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
+const t531 = (yield* C.call(N_rt.d_get, [t530, "visibility"], N_rt.d_call_invoke, S_33));
+let t537;
+B538: {
+if (R.truthy((yield* C.call(N_rt.d_eqv, ["link", t531], N_rt.d_call_invoke, S_33)))) {
+t537 = "Toute personne avec le lien pourra lire ce dossier. Continuer ?"; break B538;
 } else {
-const t522 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
-const t523 = (yield* C.call(N_rt.d_get, [t522, "clients"], N_rt.d_call_invoke, S_33));
-const t524 = (yield* C.call(N_rt.d_count, [t523], N_rt.d_call_invoke, S_33));
-const t525 = " client(s) sélectionné(s) ?";
-const t526 = R.list("Limiter l’accès aux ", t524, t525);
-t520 = (yield* C.call(N_rt.d_str$Uv, [t526], N_rt.d_call_invoke, S_33)); break B521;
+const t539 = (yield* C.call(d_audience, [], N_rt.d_call_invoke, S_33));
+const t540 = (yield* C.call(N_rt.d_get, [t539, "clients"], N_rt.d_call_invoke, S_33));
+const t541 = (yield* C.call(N_rt.d_count, [t540], N_rt.d_call_invoke, S_33));
+const t542 = " client(s) sélectionné(s) ?";
+const t543 = R.list("Limiter l’accès aux ", t541, t542);
+t537 = (yield* C.call(N_rt.d_str$Uv, [t543], N_rt.d_call_invoke, S_33)); break B538;
 }
 }
-const t527 = t520;
-const t528 = J.result(J.blToJS(t527));
-t505 = J.result(Reflect.apply(t512, t511, [J.argument(t528)])); break B506;
+const t544 = t537;
+const t545 = J.result(J.blToJS(t544));
+t522 = J.result(Reflect.apply(t529, t528, [J.argument(t545)])); break B523;
 }
 }
 }
-if (R.truthy(t505)) {
+if (R.truthy(t522)) {
 return (yield* C.call(d_request$B, ["publish", d_refresh$B], N_rt.d_call_invoke, S_34, true));
 } else {
 return null;
 }
 }
-throw new R.BLError("no matching clause for f_fnself$U3817 with " + [].join(" "));}, false);return f_fnself$U3817;})());
-J.result(Reflect.apply(t458, J.argument(t457), [J.argument(t459), J.argument(t529)]));
-const t530 = J.result(globalThis["document"]);
-const t531 = J.argument(t530)["querySelectorAll"];
-const t532 = "input[name=publication-visibility]";
-const t533 = J.result(Reflect.apply(t531, J.argument(t530), [J.argument(t532)]));
-const t534 = J.argument(t533)["forEach"];
-const t546 = ((()=>{const f_fnself$U3822 = C.fn("f_fnself$U3822", 1, function*(rt, args){const a0=args[0];C535: {
-const v_radio$U3823 = a0;
-const t536 = v_radio$U3823;
-const t537 = J.argument(t536)["addEventListener"];
-const t538 = "change";
-const t545 = ((()=>{const f_fnself$U3824 = C.fn("f_fnself$U3824", 0, function*(rt, args){C539: {
-const t540 = E_["fetch!"]("core", "assoc");
-const t541 = v_radio$U3823;
-const t542 = J.result(J.argument(t541)["value"]);
-const t543 = J.result(J.jsToBL(t542));
-const t544 = R.list("visibility", t543);
-(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/swap!/3"], [d_draft, t540, t544], N_rt.d_call_invoke, S_33));
+throw new R.BLError("no matching clause for f_fnself$U3822 with " + [].join(" "));}, false);return f_fnself$U3822;})());
+J.result(Reflect.apply(t475, J.argument(t474), [J.argument(t476), J.argument(t546)]));
+const t547 = J.result(globalThis["document"]);
+const t548 = J.argument(t547)["querySelectorAll"];
+const t549 = "input[name=publication-visibility]";
+const t550 = J.result(Reflect.apply(t548, J.argument(t547), [J.argument(t549)]));
+const t551 = J.argument(t550)["forEach"];
+const t563 = ((()=>{const f_fnself$U3827 = C.fn("f_fnself$U3827", 1, function*(rt, args){const a0=args[0];C552: {
+const v_radio$U3828 = a0;
+const t553 = v_radio$U3828;
+const t554 = J.argument(t553)["addEventListener"];
+const t555 = "change";
+const t562 = ((()=>{const f_fnself$U3829 = C.fn("f_fnself$U3829", 0, function*(rt, args){C556: {
+const t557 = E_["fetch!"]("core", "assoc");
+const t558 = v_radio$U3828;
+const t559 = J.result(J.argument(t558)["value"]);
+const t560 = J.result(J.jsToBL(t559));
+const t561 = R.list("visibility", t560);
+(yield* C.call(L.LEAVES["Elixir.BeamLisp.Refs/swap!/3"], [d_draft, t557, t561], N_rt.d_call_invoke, S_33));
 return (yield* C.call(d_paint$B, [], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3824 with " + [].join(" "));}, false);return f_fnself$U3824;})());
-J.result(Reflect.apply(t537, J.argument(t536), [J.argument(t538), J.argument(t545)]));
+throw new R.BLError("no matching clause for f_fnself$U3829 with " + [].join(" "));}, false);return f_fnself$U3829;})());
+J.result(Reflect.apply(t554, J.argument(t553), [J.argument(t555), J.argument(t562)]));
 return null;
 }
-throw new R.BLError("no matching clause for f_fnself$U3822 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3822;})());
-J.result(Reflect.apply(t534, J.argument(t533), [J.argument(t546)]));
-const t547 = d_$36$("#publication-search");
-const t548 = J.argument(t547)["addEventListener"];
-const t549 = "input";
-const t550 = d_render_clients$B;
-J.result(Reflect.apply(t548, J.argument(t547), [J.argument(t549), J.argument(t550)]));
-const t551 = d_$36$("#publication-revoke");
-const t552 = J.argument(t551)["addEventListener"];
-const t553 = "click";
-const t555 = ((()=>{const f_fnself$U3825 = C.fn("f_fnself$U3825", 0, function*(rt, args){C554: {
+throw new R.BLError("no matching clause for f_fnself$U3827 with " + [R.printStr(a0)].join(" "));}, false);return f_fnself$U3827;})());
+J.result(Reflect.apply(t551, J.argument(t550), [J.argument(t563)]));
+const t564 = d_$36$("#publication-search");
+const t565 = J.argument(t564)["addEventListener"];
+const t566 = "input";
+const t567 = d_render_clients$B;
+J.result(Reflect.apply(t565, J.argument(t564), [J.argument(t566), J.argument(t567)]));
+const t568 = d_$36$("#publication-revoke");
+const t569 = J.argument(t568)["addEventListener"];
+const t570 = "click";
+const t572 = ((()=>{const f_fnself$U3830 = C.fn("f_fnself$U3830", 0, function*(rt, args){C571: {
 return (yield* C.call(d_request$B, ["revoke", d_refresh$B], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3825 with " + [].join(" "));}, false);return f_fnself$U3825;})());
-J.result(Reflect.apply(t552, J.argument(t551), [J.argument(t553), J.argument(t555)]));
-const t556 = d_$36$("#publication-copy");
-const t557 = J.argument(t556)["addEventListener"];
-const t558 = "click";
-const t585 = ((()=>{const f_fnself$U3826 = C.fn("f_fnself$U3826", 0, function*(rt, args){C559: {
-const v_input$U3827 = (yield* C.call(d_$36$, ["#publication-url"], N_rt.d_call_invoke, S_33));
-const v_fallback$U3829 = ((()=>{const f_fnself$U3828 = C.fn("f_fnself$U3828", 0, function*(rt, args){C560: {
-const t561 = v_input$U3827;
-const t562 = J.argument(t561)["select"];
-J.result(Reflect.apply(t562, J.argument(t561), []));
+throw new R.BLError("no matching clause for f_fnself$U3830 with " + [].join(" "));}, false);return f_fnself$U3830;})());
+J.result(Reflect.apply(t569, J.argument(t568), [J.argument(t570), J.argument(t572)]));
+const t573 = d_$36$("#publication-copy");
+const t574 = J.argument(t573)["addEventListener"];
+const t575 = "click";
+const t602 = ((()=>{const f_fnself$U3831 = C.fn("f_fnself$U3831", 0, function*(rt, args){C576: {
+const v_input$U3832 = (yield* C.call(d_$36$, ["#publication-url"], N_rt.d_call_invoke, S_33));
+const v_fallback$U3834 = ((()=>{const f_fnself$U3833 = C.fn("f_fnself$U3833", 0, function*(rt, args){C577: {
+const t578 = v_input$U3832;
+const t579 = J.argument(t578)["select"];
+J.result(Reflect.apply(t579, J.argument(t578), []));
 return (yield* C.call(d_txt$B, ["#publication-status", "Le lien est sélectionné. Vous pouvez le copier."], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3828 with " + [].join(" "));}, false);return f_fnself$U3828;})());
-let t563;
+throw new R.BLError("no matching clause for f_fnself$U3833 with " + [].join(" "));}, false);return f_fnself$U3833;})());
+let t580;
 try {
-T564: {
-const t565 = J.result(globalThis["navigator"]);
-const t566 = J.result(J.argument(t565)["clipboard"]);
-const t567 = J.argument(t566)["writeText"];
-const t568 = v_input$U3827;
-const t569 = J.result(J.argument(t568)["value"]);
-const t570 = J.result(Reflect.apply(t567, J.argument(t566), [J.argument(t569)]));
-const t571 = J.argument(t570)["then"];
-const t573 = ((()=>{const f_fnself$U3830 = C.fn("f_fnself$U3830", 0, function*(rt, args){C572: {
+T581: {
+const t582 = J.result(globalThis["navigator"]);
+const t583 = J.result(J.argument(t582)["clipboard"]);
+const t584 = J.argument(t583)["writeText"];
+const t585 = v_input$U3832;
+const t586 = J.result(J.argument(t585)["value"]);
+const t587 = J.result(Reflect.apply(t584, J.argument(t583), [J.argument(t586)]));
+const t588 = J.argument(t587)["then"];
+const t590 = ((()=>{const f_fnself$U3835 = C.fn("f_fnself$U3835", 0, function*(rt, args){C589: {
 return (yield* C.call(d_txt$B, ["#publication-status", "Lien copié."], N_rt.d_call_invoke, S_34, true));
 }
-throw new R.BLError("no matching clause for f_fnself$U3830 with " + [].join(" "));}, false);return f_fnself$U3830;})());
-const t574 = J.result(Reflect.apply(t571, J.argument(t570), [J.argument(t573)]));
-const t575 = J.argument(t574)["catch"];
-const t576 = v_fallback$U3829;
-t563 = J.result(Reflect.apply(t575, J.argument(t574), [J.argument(t576)])); break T564;
+throw new R.BLError("no matching clause for f_fnself$U3835 with " + [].join(" "));}, false);return f_fnself$U3835;})());
+const t591 = J.result(Reflect.apply(t588, J.argument(t587), [J.argument(t590)]));
+const t592 = J.argument(t591)["catch"];
+const t593 = v_fallback$U3834;
+t580 = J.result(Reflect.apply(t592, J.argument(t591), [J.argument(t593)])); break T581;
 }
-} catch (t577) {
-const v_$U$USTACKTRACE$U$U = C.exceptionTrace(t577);
+} catch (t594) {
+const v_$U$USTACKTRACE$U$U = C.exceptionTrace(t594);
 const v_$U$USTACKTRACE$URAW$U$U = v_$U$USTACKTRACE$U$U;
-T564: {
-C578: {
-const v_kind$U3831 = C.exceptionKind(t577);
-const v_value$U3832 = C.exceptionValue(t577);
-const v_stack$U3834 = v_$U$USTACKTRACE$URAW$U$U;
-const t579 = v_kind$U3831;
-let t580;
-B581: {
-C582: {
-if (!(R.keyEq(t579, K_0))) break C582;
-t580 = v_value$U3832; break B581;
+T581: {
+C595: {
+const v_kind$U3836 = C.exceptionKind(t594);
+const v_value$U3837 = C.exceptionValue(t594);
+const v_stack$U3839 = v_$U$USTACKTRACE$URAW$U$U;
+const t596 = v_kind$U3836;
+let t597;
+B598: {
+C599: {
+if (!(R.keyEq(t596, K_0))) break C599;
+t597 = v_value$U3837; break B598;
 }
-C583: {
-if (!(R.keyEq(t579, K_1))) break C583;
-t580 = (yield* C.call(L.LEAVES["Elixir.Exception/normalize/3"], [K_1, v_value$U3832, v_$U$USTACKTRACE$U$U], N_rt.d_call_invoke, S_33)); break B581;
+C600: {
+if (!(R.keyEq(t596, K_1))) break C600;
+t597 = (yield* C.call(L.LEAVES["Elixir.Exception/normalize/3"], [K_1, v_value$U3837, v_$U$USTACKTRACE$U$U], N_rt.d_call_invoke, S_33)); break B598;
 }
-C584: {
-if (!(R.keyEq(t579, K_2))) break C584;
-t580 = R.tup([K_2, v_value$U3832]); break B581;
+C601: {
+if (!(R.keyEq(t596, K_2))) break C601;
+t597 = R.tup([K_2, v_value$U3837]); break B598;
 }
-throw new R.BLError("no case clause matched " + R.printStr(t579));
+throw new R.BLError("no case clause matched " + R.printStr(t596));
 }
-const v_e$U3833 = t580;
+const v_e$U3838 = t597;
 if (R.truthy(true)) {
-const v_$U$U3835 = v_e$U3833;
-const v_stacktrace$U3836 = v_$U$USTACKTRACE$U$U;
-t563 = (yield* C.call(v_fallback$U3829, [], N_rt.d_call_invoke, S_33)); break T564;
+const v_$U$U3840 = v_e$U3838;
+const v_stacktrace$U3841 = v_$U$USTACKTRACE$U$U;
+t580 = (yield* C.call(v_fallback$U3834, [], N_rt.d_call_invoke, S_33)); break T581;
 } else {
-t563 = (yield* C.call(L.LEAVES["erlang/raise/3"], [v_kind$U3831, v_value$U3832, v_stack$U3834], N_rt.d_call_invoke, S_33)); break T564;
+t580 = (yield* C.call(L.LEAVES["erlang/raise/3"], [v_kind$U3836, v_value$U3837, v_stack$U3839], N_rt.d_call_invoke, S_33)); break T581;
 }
 }
-throw t577;
+throw t594;
 }
 }
-return t563;
+return t580;
 }
-throw new R.BLError("no matching clause for f_fnself$U3826 with " + [].join(" "));}, false);return f_fnself$U3826;})());
-t438 = J.result(Reflect.apply(t557, J.argument(t556), [J.argument(t558), J.argument(t585)])); break B439;
+throw new R.BLError("no matching clause for f_fnself$U3831 with " + [].join(" "));}, false);return f_fnself$U3831;})());
+t455 = J.result(Reflect.apply(t574, J.argument(t573), [J.argument(t575), J.argument(t602)])); break B456;
 } else {
-t438 = null; break B439;
+t455 = null; break B456;
 }
 }
-t438;
+t455;
 import * as SELF_ from "./dossier.share.client.mjs";
 J.registerPublic("dossier.share.client", {["root"]: () => SELF_["d_root"], ["state"]: () => SELF_["d_state"], ["timer"]: () => SELF_["d_timer"], ["pending"]: () => SELF_["d_pending"], ["draft"]: () => SELF_["d_draft"], ["clients"]: () => SELF_["d_clients"], ["refresh!"]: () => SELF_["d_refresh$B"]});
 L.registerNamespace("dossier.share.client", "Elixir.BeamLisp.Ns.Dossier.Share.Client", SELF_);
