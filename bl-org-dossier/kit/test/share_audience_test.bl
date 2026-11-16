@@ -1,0 +1,20 @@
+(ns dossier.share.audience-test (:require [dossier.share.model :as model]))
+(deftest a-link-can-be-restricted-retried-revoked-and-published-again
+ (let [client "client-000000000000000000000001"
+       base {"id" "audience-check" "action" "publish" "operation" "link" "revision" (model/digest "bytes") "expected" 0}
+       public (model/advance nil "owner" base)
+       request (assoc base "operation" "restrict" "expected" 1 "visibility" "clients" "clients" [client])
+       private (model/advance public "owner" request)
+       revoked (model/advance private "owner" {"id" "audience-check" "action" "revoke" "operation" "revoke" "expected" 2})
+       again (model/advance revoked "owner" (assoc request "operation" "again" "expected" 3))]
+  (is (= 2 (get private "sequence")))
+  (is (= "clients" (get private "visibility")))
+  (is (= [client] (get private "clients")))
+  (is (= private (model/advance private "owner" request)))
+  (is (try (model/advance private "owner" (assoc request "clients" [])) false (catch _ true)))
+  (is (try (model/advance private "owner" (assoc request "operation" "stale")) false (catch _ true)))
+  (is (= [client] (get revoked "clients")))
+  (is (true? (get revoked "revoked")))
+  (is (= 4 (get again "sequence")))
+  (is (false? (get again "revoked")))
+  (is (= [client] (get again "clients")))))
