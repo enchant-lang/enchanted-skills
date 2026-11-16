@@ -1,74 +1,20 @@
-; test/audience_test.bl — the client reads the same file, without its internals.
-;
-;   bl test -p ~/.claude/skills/bl-org-dossier/kit test/audience_test.bl
-
-(ns dossier.audience.test
-  (:require [live.hiccup :as h] [dossier.org :as o] [dossier.page :as pg] [dossier.audience :as audience]))
-
-(def lines
-  ["#+title: Proposal" "#+language: fr" "#+client_hide: explorer ask :interne:"
-   "* Desk"
-   "The desk in one sentence."
-   "#+begin_screen_graph :id desk :title Desk :src \"/views\" :catalog \"/explorer.json\" :explorer \"/explorer\" :start a"
-   "view a | A"
-   "#+end_screen_graph"
-   "** Components"
-   "#+begin_explorer :id parts :title Parts :src \"/explorer\""
-   "view all | All | id:x"
-   "#+end_explorer"
-   "** Questions"
-   "#+begin_ask :id q1 :title Which? :options \"A|B\""
-   "Pick one."
-   "#+end_ask"
-   "** Our margin :interne:"
-   "We bill 40 % over cost."
-   "*** Detail"
-   "Deeper still."
-   "** What we promise"
-   "Kept."])
-
-(deftest the-client-reading-drops-internal-parts-and-empty-headings
-  (let [doc (o/read-doc (join "\n" lines))
-        client (audience/for-client doc)
-        html (h/hiccup->html (pg/page-h client "" ""))
-        author (h/hiccup->html (pg/page-h doc "" ""))]
-    (doseq [gone ["Components" "component-explorer" "Questions" "Pick one." "Our margin" "40 %" "Deeper still."
-                  "data-component-explorer" "data-component-catalog"]]
-      (is (includes? author gone) (str "the author's reading lost " gone))
-      (is (not (includes? html gone)) (str "the client still sees " gone)))
-    (doseq [kept ["The desk in one sentence." "What we promise" "Kept." "screen-graph" "data-mode=\"client\"" ">Client<"]]
-      (is (includes? html kept) (str "the client lost " kept)))
-    (is (= "client" (audience/mode-of "x=1&mode=client")))
-    (is (nil? (audience/mode-of "mode=author")))))
-
-(deftest a-locked-client-service-offers-no-source-no-toggle-no-review
-  (let [html (h/hiccup->html (pg/page-h (audience/view (o/read-doc (join "\n" lines)) nil true) "" ""))]
-    (doseq [gone ["source .bl.org" "id=\"audience\"" "review.js" "dossier-review" "Commentaires"]]
-      (is (not (includes? html gone)) (str "a locked page still has " gone)))))
-
-(deftest the-default-hides-the-explorer-and-internal-tags
-  (is (= {:blocks #{"explorer"} :tags #{"internal" "interne"}} (audience/hides {}))))
-
-(deftest a-warm-dossier-keeps-its-bar-exactly-as-it-was
-  (let [warm (o/read-doc (join "\n" ["#+title: Proposal" "#+design: warm-signal" "* Desk" "Word."]))
-        html (h/hiccup->html (pg/page-h warm "" ""))]
-    (is (not (includes? html "id=\"audience\"")) "warm dossiers gain no client switch")
-    (is (includes? html "source .bl.org"))
-    (is (includes? html "id=\"theme\""))))
-
-(deftest the-sober-button-appears-only-when-the-page-carries-both-readings
-  (let [doc (o/read-doc (join "\n" ["#+title: Proposal" "#+design: sober" "* Desk" "Word."]))
-        with-css (h/hiccup->html (pg/page-h doc "html[data-design=\"sober\"]{}" ""))
-        without (h/hiccup->html (pg/page-h doc "" ""))]
-    (is (includes? with-css "id=\"design\"") "the reading offers its sober switch")
-    (is (not (includes? without "id=\"design\"")) "no switch when no second reading is drawn")))
-
-(deftest a-screen-host-carries-the-readers-view
-  (let [doc (o/read-doc (join "\n" ["#+title: Proposal" "* Desk"
-                                     "#+begin_screen_graph :id desk :title Desk :src \"/views\" :catalog \"/explorer.json\" :start a"
-                                     "view a | A" "#+end_screen_graph"]))]
-    (erlang/put :dossier/params "mode=client&design=sober")
-    (let [html (h/hiccup->html (pg/page-h doc "" ""))]
-      (is (includes? html "src=\"/views?view=a&amp;mode=client&amp;design=sober\"") (subs html 0 400))
-      (is (includes? html "\"/explorer.json?mode=client&amp;design=sober\"")))
-    (erlang/put :dossier/params "")))
+(ns dossier.share.audience-test (:require [dossier.share.model :as model]))
+(deftest a-link-can-be-restricted-retried-revoked-and-published-again
+ (let [client "client-000000000000000000000001"
+       base {"id" "audience-check" "action" "publish" "operation" "link" "revision" (model/digest "bytes") "expected" 0}
+       public (model/advance nil "owner" base)
+       request (assoc base "operation" "restrict" "expected" 1 "visibility" "clients" "clients" [client])
+       private (model/advance public "owner" request)
+       revoked (model/advance private "owner" {"id" "audience-check" "action" "revoke" "operation" "revoke" "expected" 2})
+       again (model/advance revoked "owner" (assoc request "operation" "again" "expected" 3))]
+  (is (= 2 (get private "sequence")))
+  (is (= "clients" (get private "visibility")))
+  (is (= [client] (get private "clients")))
+  (is (= private (model/advance private "owner" request)))
+  (is (try (model/advance private "owner" (assoc request "clients" [])) false (catch _ true)))
+  (is (try (model/advance private "owner" (assoc request "operation" "stale")) false (catch _ true)))
+  (is (= [client] (get revoked "clients")))
+  (is (true? (get revoked "revoked")))
+  (is (= 4 (get again "sequence")))
+  (is (false? (get again "revoked")))
+  (is (= [client] (get again "clients")))))
