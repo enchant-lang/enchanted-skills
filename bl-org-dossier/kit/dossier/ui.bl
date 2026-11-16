@@ -157,8 +157,8 @@
 ; ─── language: `#+language: fr` translates the kit's own words ────────────
 
 (def ^:private fr
-  {"Anything Claude should know (optional)" "Ce que Claude doit savoir (facultatif)"
-   "Update" "Mettre à jour" "Send to Claude" "Envoyer à Claude" "✓ answered " "✓ répondu " "awaiting you" "attend votre avis"
+  {"Additional notes (optional)" "Notes complémentaires (facultatif)"
+   "Save" "Enregistrer" "✓ answered " "✓ répondu " "awaiting you" "attend votre avis"
    "Agree" "D'accord" "Rework" "À revoir" "Disagree" "Pas d'accord" "Your call" "À vous de trancher"
    "Love it" "J'adore" "Fine" "Ça va" "How does it feel?" "Qu'en pensez-vous ?"
    "Does this composition fit the work?" "Cette composition sert-elle le travail ?"
@@ -170,7 +170,11 @@
    "answered" "répondu" " questions wait for you →" " questions vous attendent →" "Whole document" "Tout le document"
    "Scenario" "Scénario" "Back to the scenario" "Revenir au scénario" "Today" "Aujourd'hui" "After" "Ensuite"
    "Adjust the assumptions" "Ajuster les hypothèses" "Assumption" "Hypothèse" "adjusted" "ajusté"
-   "live" "en direct" "source .bl.org" "source .bl.org" "theme" "thème"})
+   "live" "en direct" "source .bl.org" "source .bl.org" "theme" "thème"
+   "Walk the screens. Changes stay inside this prototype." "Parcourez les écrans. Les changements restent dans ce prototype."
+   "Does this flow fit how you work?" "Ce parcours correspond-il à votre travail ?"
+   "Is this mapping faithful and useful?" "Cette correspondance est-elle fidèle et utile ?"
+   "does it" "fait" "partly" "partiellement" "no" "non"})
 
 (defn tr
   "The kit's own words in the document's language (set by the page for one render)."
@@ -189,9 +193,9 @@
      [:div.fb-opts
       (for [[v label] opts]
         [:button {:type "button" :class (if (= v ans) "opt on" "opt") :data-v v} label])]
-     [:textarea {:name "note" :rows "2" :placeholder (or (:note-placeholder a) (tr "Anything Claude should know (optional)"))} (or (:note a) "")]
+     [:textarea {:name "note" :rows "2" :placeholder (or (:note-placeholder a) (tr "Additional notes (optional)"))} (or (:note a) "")]
      [:div.fb-row
-      [:button.send {:type "submit"} (or (:submit-label a) (if ans (tr "Update") (tr "Send to Claude")))]
+      [:button.send {:type "submit"} (or (:submit-label a) (tr "Save"))]
       [:span.fb-state (if ans (str (tr "✓ answered ") (or (:at a) "")) (tr "awaiting you"))]]])))
 
 ; ─── prose components ──────────────────────────────────────────────────────
@@ -246,7 +250,7 @@
       [:tbody
        (for [r (rest rows)]
          [:tr [:th (md (first r))] (for [c (rest r)] [:td (mark c)])])]]
-     [:div.legend [:i.dot.full] "does it" [:i.dot.half] "partly" [:i.dot.none] "no"]]))
+     [:div.legend [:i.dot.full] (tr "does it") [:i.dot.half] (tr "partly") [:i.dot.none] (tr "no")]]))
 
 ;; A roadmap: what is built, what comes next, what waits — one card each, with
 ;; what it answers. Body rows: `now | title | detail | ref` (now, next or later).
@@ -274,7 +278,7 @@
      [:dl.job-facts
       ;; reference products are named by the dossier (:codex-label …); Baton's labels stay the default
       (when (:codex a) (list [:dt (or (:codex-label a) "Codex does")] [:dd (md (:codex a))]))
-      (when (:claude a) (list [:dt (or (:claude-label a) "Claude Code path")] [:dd (md (:claude a))]))
+      (when (:claude a) (list [:dt (or (:claude-label a) "Agent path")] [:dd (md (:claude a))]))
       (when (:decision a) (list [:dt.decide (or (:decision-label a) "Baton decides")] [:dd.decide (md (:decision a))]))]
      (when (:screen a) [:a.to-screen {:href (str "#screen-" (:screen a))} (str "See the screen → " (:screen a))])
      (feedback-h a [["spot-on" "Spot on"] ["close" "Close"] ["wrong" "Wrong job"]] "Is this the job?")]))
@@ -594,7 +598,7 @@
     [:figure {:class (str "screen-graph" (when (:render-view b) " review-graph") (design-class a)) :id (str "screen-graph-" (:id a))
               :data-graph (:id a) :data-start start :data-graph-label (:graph-label a) :data-initial-mode (:mode a)}
      [:figcaption [:b (md (:title a))]
-      [:p (md (or (:caption a) "Walk the screens. Changes stay inside this prototype."))]]
+      [:p (md (or (:caption a) (tr "Walk the screens. Changes stay inside this prototype.")))]]
      (if (seq errors)
        [:div.warning {:role "alert"} (for [e errors] [:p e])]
        [:div.sg-workbench {:tabindex "0" :aria-label (or (:workbench-label a) "Interactive prototype")}
@@ -622,7 +626,7 @@
      [:p.sg-footnote (or (:help a) (tr "Click the screen's own controls. Hover for tools · H highlights links · G shows the graph."))]
      (when (:id a)
        (feedback-h a [["love" (tr "Love it")] ["fine" (tr "Fine")] ["rework" (tr "Rework")]]
-        (if (:render-view b) "Is this mapping faithful and useful?" "Does this flow fit how you work?")))])))
+        (if (:render-view b) (tr "Is this mapping faithful and useful?") (tr "Does this flow fit how you work?"))))])))
 
 ; ─── sequence: who says what to whom, in order ─────────────────────────────
 
