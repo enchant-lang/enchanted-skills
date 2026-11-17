@@ -22,7 +22,7 @@
             local (when (= mode "s") (read-json (str root "/grants/" (model/digest key) ".json")))
             id (if (= mode "p") key (get local "id"))
             access (when (and host id) (accounts/call! host "access" {"id" id "mode" (if (= mode "p") "id" "capability")
-                          "tokenHash" (when (= mode "s") (model/digest key)) "revision" rev "token" (web/req-cookie c "ora-client")}))
+                          "tokenHash" (when (= mode "s") (model/digest key)) "revision" rev "token" (accounts/token host c)}))
             grant (if host (get access "publication") local)
             admitted (if host (get access "allowed") (and (= mode "s") local (not (get local "revoked")) (= "link" (get local "visibility" "link"))))]
        (cond
