@@ -924,6 +924,7 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   function fmt(kind, v) {
     if (v == null || !Number.isFinite(v)) return t('to measure', 'à mesurer');
     const a = Math.abs(v), sign = v < 0 ? '−' : '', d = a < 10 ? 1 : 0;
+    if (String(kind || '').startsWith('num:')) return sign + nf(a, d) + ' ' + kind.slice(4);
     switch (kind) {
       case 'mad': return a >= 1e6 ? sign + nf(Math.abs(sig2(v)) / 1e6, 1) + ' MMAD' : a >= 1e3 ? sign + nf(Math.abs(sig2(v)) / 1e3, 0) + ' kMAD' : sign + nf(a, 0) + ' MAD';
       case 'mad1': return a >= 1e6 ? sign + nf(a / 1e6, 1) + ' MMAD' : a >= 1e3 ? sign + nf(a / 1e3, 0) + ' kMAD' : sign + nf(a, 0) + ' MAD';
@@ -980,7 +981,7 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   const save = () => { try { localStorage.setItem(store(), JSON.stringify({ sig: sigOf(), state: st })); } catch {} };
   const width = (el, share) => { if (el) el.style.width = Math.max(0, Math.min(100, share * 100)) + '%'; };
   const fmtInput = (r, v) => r.unit === '%' ? fmt('pct', v) : nf(v, Math.abs(v) < 10 ? 2 : 0) + (r.unit ? ' ' + r.unit : '');
-  const kindOf = id => { const r = byId[id]; if (!r) return 'num'; if (r.unit === '%') return 'pct'; if (/MAD/.test(r.unit)) return 'mad'; if (/^h\b|^h\//.test(r.unit)) return 'hours'; if (/^(j|jour)/.test(r.unit)) return 'days'; if (/^mois/.test(r.unit)) return 'months'; if (r.unit === 'part') return 'share'; if (r.unit === 'multiple') return 'ratio'; return 'num'; };
+  const kindOf = id => { const r = byId[id]; if (!r) return 'num'; if (r.fmt) return r.fmt; if (r.unit === '%') return 'pct'; if (/MAD/.test(r.unit)) return 'mad'; if (/^h\b|^h\//.test(r.unit)) return 'hours'; if (/^(j|jour)/.test(r.unit)) return 'days'; if (/^mois/.test(r.unit)) return 'months'; if (r.unit === 'part') return 'share'; if (r.unit === 'multiple') return 'ratio'; return 'num'; };
   const text = e => { const s = String(e || ''); return s; };
   function words(id) {
     const f = byId[id]; if (!f || f.input) return '';
@@ -1000,6 +1001,12 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
     doc.querySelectorAll('[data-nb-bars]').forEach(box => {
       const bars = [...box.querySelectorAll('[data-nb-w]')], max = Math.max(1e-9, ...bars.map(b => Math.abs(V[b.dataset.nbW] || 0)));
       bars.forEach(b => width(b, Math.abs(V[b.dataset.nbW] || 0) / max));
+    });
+    // driver tree: the parts of a sum are scaled against their siblings only
+    doc.querySelectorAll('[data-nb-kids="sum"]').forEach(box => {
+      const bars = [...box.children].map(n => n.querySelector(':scope > .nb-dn-head [data-nb-dw], :scope > details > summary [data-nb-dw]')).filter(Boolean);
+      const max = Math.max(1e-9, ...bars.map(b => Math.abs(V[b.dataset.nbDw] || 0)));
+      bars.forEach(b => width(b, Math.abs(V[b.dataset.nbDw] || 0) / max));
     });
     doc.querySelectorAll('[data-nb-limit]').forEach(box => {
       const raw = V[box.dataset.value] || 0, cap = V[box.dataset.limit] || 0, max = Math.max(raw, cap, 1e-9);
@@ -1061,6 +1068,8 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
       place();
     }
     save();
+    // Project components (a 3D scene, a map, a chart) follow the same figures.
+    document.dispatchEvent(new CustomEvent('dossier:notebook', { detail: { scenario: st.scenario, values: { ...V }, scenarios: ALL, adjusted: { ...st.over } } }));
   }
 
   // ---- explain: a figure opens its formula; each term opens in turn
@@ -1196,6 +1205,26 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   const bindAllFrames = () => document.querySelectorAll('iframe').forEach(bindFrameTheme);
   bindAllFrames();
   new MutationObserver(bindAllFrames).observe(document.documentElement, { childList: true, subtree: true });
-  window.dossierNotebook = { apply, calc: (sid, over) => (load(), calc(sid, over)), fmt, parse, state: st, open: id => (load(), open(id, document.querySelector(`[data-nb="${CSS.escape(id)}"]`))) };
+  // The bridge for project components. Reads are pure; `set`, `choose` and
+  // `reset` change only this browser's exploration, like a slider would.
+  // `open(id, anchor)` explains a figure next to any element (a 3D label).
+  const ready = () => load() && M;
+  window.dossierNotebook = {
+    apply, fmt, parse, state: st,
+    calc: (sid, over) => (load(), calc(sid, over)),
+    ready: () => Boolean(ready()),
+    get: id => (ready() ? V[id] ?? null : null),
+    values: () => (ready() ? { ...V } : {}),
+    scenario: () => st.scenario,
+    kind: id => (ready() ? kindOf(id) : 'num'),
+    show: (id, kind) => fmt(kind || (ready() ? kindOf(id) : 'num'), ready() ? V[id] : null),
+    row: id => (ready() && byId[id] ? { ...byId[id] } : null),
+    at: place => (ready() ? [...M.inputs.map(r => byId[r.id]), ...M.formulas].filter(r => r.at === place).map(r => ({ ...r })) : []),
+    set: (id, v) => { if (!ready() || !byId[id]?.input) return false; const n = Number(v); if (!Number.isFinite(n)) return false; if (n === Number(byId[id][st.scenario])) delete st.over[id]; else st.over[id] = n; apply(); return true; },
+    choose: sid => { if (!ready() || !M.scenarios.some(s => s.id === sid)) return false; st.scenario = sid; st.over = {}; apply(); return true; },
+    reset: () => { if (ready()) { st.over = {}; apply(); } },
+    on: fn => { const h = e => fn(e.detail); document.addEventListener('dossier:notebook', h); if (ready()) fn({ scenario: st.scenario, values: { ...V }, scenarios: ALL, adjusted: { ...st.over } }); return () => document.removeEventListener('dossier:notebook', h); },
+    open: (id, anchor) => (load(), open(id, anchor || document.querySelector(`[data-nb="${CSS.escape(id)}"]`))),
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply); else apply();
 })();

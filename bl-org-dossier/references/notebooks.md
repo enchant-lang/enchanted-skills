@@ -79,7 +79,7 @@ Write formulas people can say out loud and stand by: one line, named terms.
 
 | Block | Body | Renders |
 |---|---|---|
-| `scenarios :start ID` | `measure ID \| label \| format \| tone`, then prose | scenario switch in place, and a sticky bar on every section with the measures |
+| `scenarios :start ID [:dock none]` | `measure ID \| label \| format \| tone`, then prose | scenario switch in place, and a sticky bar on every section with the measures (`:dock none` keeps only the switch in place, for a notebook that is one part of a larger report) |
 | `measure` | `value ID \| label \| format \| tone \| note` | large figures; the note may hold inline values |
 | `ledger :table T [:where "col=v"] [:group col]` | `column NAME \| label \| format` (`@col` takes the row's format) | the rows of a table as cards: a cell naming people draws them, naming claims draws their words, naming a model id draws its live value |
 | `assumptions [:people "a,b"]` | — | every assumption under the person who confirms it, with slider, scenario values and claims |
@@ -90,12 +90,51 @@ Write formulas people can say out loud and stand by: one line, named terms.
 | `range :value ID :format F` | — | the scenarios on one line; an adjusted value as a marker |
 | `funnel` | `kind`, `step`, `lever` lines | a flow of shares of the first step, with levers that open |
 | `controls :inputs "a,b"` | or `input ID` lines | sliders in a closed « Adjust the assumptions » |
+| `drivers :value ID [:depth 3] [:stop "a,b"]` | — | the figure as a tree of what it reads, down to the assumptions and their people; the parts of a pure sum carry bars scaled against their siblings (what it subtracts is hatched), a product shows its operators instead; a term met twice opens once (↑) |
 
 Inline: `{{ID|format}}` in a paragraph, a list item or a note. Formats: `mad`
 (two significant digits, MAD/kMAD/MMAD), `hours`, `days`, `months`, `count`,
-`pct` (an input in %), `share` (a fraction shown in %), `num`. Tones: `ink
+`pct` (an input in %), `share` (a fraction shown in %), `num`, and `num:UNIT`
+(a plain number followed by its unit: `num:g`, `num:t/h`, `num:kg`). Tones: `ink
 green blue gold violet signal dim`. Keep the model tables in a late section so
 reading sections stay figures and sentences; the tables remain the source.
+
+## Placing figures in the project's own world
+
+The blocks above draw figures as figures. When the project already has a
+place — a plant in 3D, a map of desks, a process graph, a time series — the
+value should live *there*, so the reader sees where the money or the time
+goes instead of reading it in a column. The kit does not draw those places;
+it hands them the live model.
+
+- **`at` column** (inputs and formulas, optional): where a figure happens, in
+  the project's own identifiers (`broyage`, `chiffrage`, `site-2`). The kit
+  never interprets it; it reaches the browser with the row.
+- **`fmt` column** (optional): how the figure reads (`mad`, `hours`, `num`…)
+  when its unit alone does not say. Used by `drivers`, the explain panel and
+  the bridge.
+- **The bridge**, `window.dossierNotebook`, for project code in the page:
+
+  | Call | Does |
+  |---|---|
+  | `on(fn)` | calls `fn({scenario, values, scenarios, adjusted})` now and after every recompute; returns an unsubscribe. The same detail is dispatched as the `dossier:notebook` event on `document` |
+  | `get(id)`, `values()`, `scenario()` | the current figures (the reader's scenario and slider adjustments included) |
+  | `at(place)` | the input and formula rows whose `at` is `place` (`id`, `title`, `unit`, `fmt`, `who`, `claims`…) |
+  | `show(id[, kind])`, `kind(id)`, `fmt(kind, v)` | the figure written as the notebook writes it |
+  | `open(id, anchor)` | the explain panel for that figure, beside any element (a label over a canvas) |
+  | `set(id, v)`, `choose(sid)`, `reset()` | the same local exploration a slider or the scenario switch makes; inputs only, nothing written to the file |
+  | `row(id)`, `calc(sid, over)`, `ready()` | a row, a full recompute off-screen, whether the page carries a model |
+
+  Any element with `class="nb-v" data-nb="ID" data-fmt="KIND"` is refreshed
+  and explained by the kit itself, wherever the project puts it. A component
+  that stops click propagation calls `open(id, el)` instead.
+
+Rules for a placed figure: the scene shows the *same* ids the blocks show, so
+a number on a 3D label and in a bar never disagree; the scene never computes
+value itself (no second formula in client code); figures whose `at` names
+nothing in the scene are listed, not dropped; and a placed figure keeps the
+explain panel one click away. Shape and position carry magnitude (height,
+thickness, speed), but the number is always written beside it.
 
 ## Record meaning before drawing numbers
 

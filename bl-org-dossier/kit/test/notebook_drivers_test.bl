@@ -1,0 +1,80 @@
+; test/notebook_drivers_test.bl — a figure opens into what it reads, and the browser
+; learns where each figure happens.
+;
+;   bl test -p ~/.claude/skills/bl-org-dossier/kit test/notebook_drivers_test.bl
+
+(ns dossier.notebook-drivers.test
+  (:require [live.hiccup :as h] [dossier.org :as o] [dossier.page :as pg] [dossier.notebook :as nb] [bl.json :as json]))
+
+(def ^:private lines
+  ["#+language: fr" "* Valeur"
+   "#+begin_drivers :value total :title \"Ce qui fait le total\""
+   "#+end_drivers"
+   "#+begin_drivers :value total :depth 1"
+   "#+end_drivers"
+   "#+begin_drivers :value nope"
+   "#+end_drivers"
+   "* Modèle"
+   "#+name: people" "| id | name | role |" "|---+---+---|" "| khalid | Khalid | Responsable Traitement |"
+   "#+name: inputs" "| id | title | unit | value | min | max | step | who | at |" "|---+---+---+---+---+---+---+---+---|"
+   "| tonnes | Tonnes traitées | t/j | 400 | 0 | 900 | 10 | khalid | broyage |"
+   "| excess | Rejet en trop | g/t | 0.25 | 0 | 2 | 0.01 | khalid | digue |"
+   "| price | Prix de l'or | MAD/g | 1000 | 500 | 2000 | 10 | khalid | |"
+   "| hours | Heures de synthèse | h/an | 300 | 0 | 900 | 10 | khalid | siege |"
+   "| upkeep | Entretien | h/an | 50 | 0 | 500 | 10 | khalid | siege |"
+   "#+name: formulas" "| id | title | expr | unit | fmt | at |" "|---+---+---+---+---+---|"
+   "| grams | Or perdu par jour | tonnes × excess | g/j | num | digue |"
+   "| loss | Or perdu en MAD | grams × price × 365 | MAD/an |  | digue |"
+   "| saved | Heures rendues | hours − upkeep | h/an |  | siege |"
+   "| total | Valeur | loss + grams × price | MAD/an |  | |"])
+
+(deftest a-sum-is-told-apart-from-a-product
+  (is (= [[1 "a"] [-1 "b"] [1 "c"]] (nb/sum-terms (nb/parse "a − b + c") 1)))
+  (is (= [[1 "a"] [1 "b"]] (nb/sum-terms (nb/parse "a + 2 + b") 1)) "a constant drops out of the composition")
+  (is (= [[-1 "a"] [1 "b"]] (nb/sum-terms (nb/parse "−a + b") 1)))
+  (is (nil? (nb/sum-terms (nb/parse "a × b") 1)))
+  (is (nil? (nb/sum-terms (nb/parse "a + b × c") 1)) "a sum with a product inside has no bars")
+  (is (nil? (nb/sum-terms (nb/parse "min(a, b)") 1))))
+
+(deftest a-driver-tree-opens-a-figure-into-what-it-reads
+  (let [doc (o/read-doc (join "\n" lines))
+        m (nb/model doc)
+        html (h/hiccup->html (pg/page-h doc "" ""))]
+    (is (empty? (nb/problems m)) (pr-str (nb/problems m)))
+    (doseq [needle ["data-nb-drivers=\"total\"" "data-nb-dn=\"loss\"" "data-nb-dn=\"grams\"" "data-nb-dn=\"tonnes\""
+                    "nb-dn is-input" "Khalid" "Ce qui fait le total" "drivers: unknown value nope"
+                    "<i class=\"nb-dn-op\">×</i>" "nb-dn is-again"]]
+      (is (includes? html needle) (str "missing " needle)))
+    (is (not (includes? html "data-nb-kids=\"sum\"")) "a total with a product inside is not drawn as a sum")))
+
+(deftest a-sum-carries-bars-scaled-in-the-browser
+  (let [doc (o/read-doc (join "\n" (concat (take 2 lines) ["#+begin_drivers :value saved" "#+end_drivers"] (drop 8 lines))))
+        html (h/hiccup->html (pg/page-h doc "" ""))]
+    (is (includes? html "data-nb-kids=\"sum\""))
+    (is (includes? html "data-nb-dw=\"upkeep\""))
+    (is (includes? html "nb-dn is-input is-minus") "what a sum subtracts is marked")))
+
+(deftest a-notebook-inside-a-report-can-keep-its-switch-in-place
+  (let [base ["#+name: scenarios" "| id | label |" "|---+---|" "| low | Prudent |" "| mid | Central |"
+              "#+name: inputs" "| id | title | unit | low | mid | min | max | step |" "|---+---+---+---+---+---+---+---|"
+              "| a | A | h | 1 | 2 | 0 | 9 | 1 |"
+              "#+name: formulas" "| id | title | expr | unit |" "|---+---+---+---|" "| b | B | a × 2 | h |"]
+        page (fn [head] (h/hiccup->html (pg/page-h (o/read-doc (join "\n" (concat ["* V" head "measure b | B | hours | blue" "#+end_scenarios"] base))) "" "")))
+        docked (page "#+begin_scenarios :start mid")
+        inline (page "#+begin_scenarios :start mid :dock none")]
+    (is (includes? docked "nb-dock"))
+    (is (not (includes? inline "nb-dock")) "no bar follows the reader into the rest of the report")
+    (is (includes? inline "data-nb-scenario=\"low\"") "the switch stays where the block is")))
+
+(deftest the-browser-learns-where-each-figure-happens
+  (let [doc (o/read-doc (join "\n" lines))
+        p (json/decode (nb/payload (nb/context doc)))
+        row (fn [k id] (first (filter (fn [r] (= id (get r "id"))) (get p k))))]
+    (is (= "broyage" (get (row "inputs" "tonnes") "at")))
+    (is (= "digue" (get (row "formulas" "loss") "at")))
+    (is (= "num" (get (row "formulas" "grams") "fmt")))))
+
+(deftest a-plain-number-can-carry-its-unit
+  (is (= "250 g" (nb/fmt "num:g" 250)))
+  (is (= "17 t/h" (nb/fmt "num:t/h" 17.17)) "ten and above: no decimals, as every format")
+  (is (= "2,5 g/t" (do (erlang/put :dossier/language "fr") (nb/fmt "num:g/t" 2.5)))))

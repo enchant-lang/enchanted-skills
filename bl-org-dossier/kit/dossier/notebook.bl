@@ -8,6 +8,9 @@
 ;   #+name: claims    | id | phase | lot | text | source |   the promises a figure stands on
 ;   #+name: phases    | id | label |    #+name: lots | id | title | phase |    #+name: sources | id | label |
 ;   #+import: other.bl.org   that document's model comes first (the host reads it: `with-imports`).
+;   Optional columns on inputs and formulas: `fmt` (how the figure reads) and `at` (where it
+;   happens, in the project's own words: a step, a desk, a site). Both reach the browser, so a
+;   project's own map, scene or graph can place live figures (`window.dossierNotebook.at`).
 ;
 ; An input whose unit is `%` is written as a percentage (25) and enters an
 ; expression as a fraction (0,25). A formula reads only ids defined above it.
@@ -17,7 +20,7 @@
 (ns dossier.notebook
   (:require [dossier.ui :as ui] [dossier.org :as o] [bl.json :as json]))
 
-(def blocks #{"scenarios" "measure" "bars" "limit" "chain" "compare" "range" "trajectory" "waterfall" "funnel" "controls" "ledger" "assumptions"})
+(def blocks #{"scenarios" "measure" "bars" "limit" "chain" "compare" "range" "trajectory" "waterfall" "funnel" "controls" "ledger" "assumptions" "drivers"})
 
 (defn num [v]
   (cond (number? v) v
@@ -212,6 +215,8 @@
   "A value as the reader reads it. nil stays visibly unknown."
   [kind v]
   (if (nil? v) (if (fr?) "à mesurer" "to measure")
+    (if (and kind (starts-with? kind "num:"))
+      (str (fixed v (if (< (abs v) 10) 1 0)) " " (subs kind 4))
     (case kind
       "mad" (let [a (abs v)]
               (cond (>= a 1000000) (str (fixed (/ (sig2 v) 1000000) 1) " MMAD")
@@ -228,7 +233,7 @@
       "pct" (str (fixed v (if (< (abs v) 10) 1 0)) " %")
       "share" (str (fixed (* 100 v) (if (< (abs v) 0.1) 1 0)) " %")
       "ratio" (fixed v (if (< (abs v) 10) 2 1))
-      (fixed v (if (< (abs v) 10) 1 0)))))
+      (fixed v (if (< (abs v) 10) 1 0))))))
 
 ;; ---- drawing
 
@@ -461,6 +466,87 @@
                (when (not= "%" (get r "unit")) (str " " (get r "unit")))])]
            (claims-h (get r "claims"))])])]))
 
+;; ---- the driver tree: a figure, opened into what it reads
+
+(defn kind-of
+  "How a model id reads when no block says: its `fmt` column, else its unit."
+  [id]
+  (let [m (:model (ctx))
+        r (or (some #(when (= id (get % "id")) %) (:inputs m)) (some #(when (= id (get % "id")) %) (:formulas m)))
+        u (or (get r "unit") "") f (get r "fmt")]
+    (cond (and f (not (blank? f))) f
+          (= u "%") "pct"
+          (includes? u "MAD") "mad"
+          (Regex/run (Regex/compile! "^h(/|$| )") u) "hours"
+          (Regex/run (Regex/compile! "^(j|jour)") u) "days"
+          (starts-with? u "mois") "months"
+          (= u "part") "share"
+          (= u "multiple") "ratio"
+          :else "num")))
+
+(defn sum-terms
+  "A pure sum as [sign id] pairs (constants drop out), or nil when it multiplies, divides or bounds."
+  [node sign]
+  (cond (:ref node) [[sign (:ref node)]]
+        (contains? node :num) []
+        (contains? #{"+" "-"} (:op node))
+        (let [a (sum-terms (:a node) sign) b (sum-terms (:b node) (if (= "-" (:op node)) (- 0 sign) sign))]
+          (when (and (some? a) (some? b)) (vec (concat a b))))
+        :else nil))
+
+(defn- ops-before
+  "Each id of an expression with the operator written before its first use."
+  [expr]
+  (let [ts (tokens expr) sym {"*" "×" "×" "×" "/" "÷" "÷" "÷" "+" "+" "-" "−" "−" "−" "," ","}]
+    (reduce (fn [out [i t]]
+              (if (and (Regex/run (Regex/compile! "^[A-Za-z_]") t) (not (contains? #{"min" "max"} t)) (not (contains? out t)))
+                (assoc out t (get sym (get ts (dec i)) ""))
+                out))
+            {} (map-indexed (fn [i t] [i t]) ts))))
+
+(defn- driver-h
+  "One node: its value, a bar when its parent is a sum, and what it reads (opened once per tree)."
+  [id depth level seen stop op sign bar?]
+  (let [m (:model (ctx))
+        f (some #(when (= id (get % "id")) %) (:formulas m))
+        r (or f (input-row id))
+        node (when f (try (parse (get f "expr")) (catch e nil)))
+        terms (when node (sum-terms node 1))
+        kids (when node (vec (distinct (ids-of node))))
+        again? (contains? @seen id)
+        open? (and node (seq kids) (< level depth) (not again?) (not (contains? stop id)))
+        _ (when open? (swap! seen conj id))
+        head [:div.nb-dn-head
+              [:i.nb-dn-op op]
+              [:span.nb-dn-label (ui/mdi (or (get r "title") id))
+               (when (and (nil? f) (seq (refs (get r "who")))) (people-h (get r "who")))]
+              (out id (kind-of id))
+              (when bar? [:span.nb-track [:i {:data-nb-dw id}]])]
+        cls (str "nb-dn" (if f "" " is-input") (if (< sign 0) " is-minus" "") (if again? " is-again" ""))]
+    [:div {:class cls :data-nb-dn id}
+     (if open?
+       [:details (cond-> {} (< level 2) (assoc :open true))
+        [:summary head]
+        [:div.nb-dn-kids {:data-nb-kids (if terms "sum" "")}
+         (let [ops (ops-before (get f "expr")) signs (into {} (map (fn [[s k]] [k s]) (reverse (or terms []))))]
+           (map-indexed
+             (fn [i k]
+               (let [s (get signs k 1)]
+                 (driver-h k depth (inc level) seen stop
+                           (if terms (if (< s 0) "−" (if (= i 0) "" "+")) (get ops k ""))
+                           s (some? terms))))
+             kids))]]
+       head)]))
+
+(defn- drivers-h
+  "A figure as the tree of what it reads: a sum shows its parts as bars, a product its factors."
+  [b]
+  (let [a (:attrs b) id (:value a) depth (or (num (:depth a)) 3)]
+    (if-not (known? id)
+      [:p.warning (str "drivers: unknown value " id)]
+      [:div.nb-drivers {:data-nb-drivers id}
+       (driver-h id depth 0 (atom #{}) (set (refs (:stop a))) "" 1 false)])))
+
 (defn block-h
   "A notebook block, or nil when the block is not one."
   [b]
@@ -481,15 +567,16 @@
                     "funnel" (list (head-h b) (funnel-h b))
                     "controls" (controls-h b)
                     "ledger" (list (head-h b) (ledger-h b))
-                    "assumptions" (list (head-h b) (assumptions-h b)))))))
+                    "assumptions" (list (head-h b) (assumptions-h b))
+                    "drivers" (list (head-h b) (drivers-h b)))))))
 
 (defn payload
   "What the browser needs to recompute and explain: the closed model, never code."
   [c]
   (when (and c (empty? (:errors c)))
     (let [m (:model c) sids (map :id (:scenarios m))]
-      (json/encode {:inputs (mapv (fn [r] (select-keys r (concat ["id" "title" "unit" "min" "max" "step" "who" "claims" "source"] sids))) (:inputs m))
-                    :formulas (mapv (fn [f] (select-keys f ["id" "title" "expr" "unit" "claims" "who" "phase"])) (:formulas m))
+      (json/encode {:inputs (mapv (fn [r] (select-keys r (concat ["id" "title" "unit" "fmt" "at" "min" "max" "step" "who" "claims" "source"] sids))) (:inputs m))
+                    :formulas (mapv (fn [f] (select-keys f ["id" "title" "expr" "unit" "fmt" "at" "claims" "who" "phase"])) (:formulas m))
                     :people (into {} (map (fn [[k v]] [k (select-keys v ["name" "role"])]) (:people m)))
                     :claims (into {} (map (fn [[k v]] [k (select-keys v ["text" "phase" "source"])]) (:claims m)))
                     :phases (into {} (map (fn [[k v]] [k (get v "label")]) (:phases m)))

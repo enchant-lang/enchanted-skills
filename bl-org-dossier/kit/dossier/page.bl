@@ -206,7 +206,7 @@
         _ (erlang/put :dossier/language (:language meta))
         nbc (nb/context doc)
         _ (erlang/put :dossier/notebook nbc)
-        dock (first (filter (fn [nd] (and (= :block (:t nd)) (= "scenarios" (:lang nd)))) (:nodes doc)))
+        dock (first (filter (fn [nd] (and (= :block (:t nd)) (= "scenarios" (:lang nd)) (not= "none" (:dock (:attrs nd))))) (:nodes doc)))
         secs (vec (sections (group-screens (with-procedures (with-design (:design meta) (:nodes doc))))))
         n (count secs)]
     (list
