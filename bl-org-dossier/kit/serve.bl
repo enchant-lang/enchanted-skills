@@ -113,8 +113,26 @@
                                    (System/get_env "DOSSIER_HANDLE")) "") body)]
       (web/json conn (:status result) (:body result)))))
 
+(defn- explorer-route [conn]
+  (when (and (= "get" (web/method conn)) (= "/explorer" (web/path conn)))
+    (if-let [p (System/get_env "DOSSIER_EXPLORER")]
+      (if (File/exists? p)
+        (web/html conn (File/read! p))
+        (web/text conn 404 "Explorer not found"))
+      (web/text conn 404 "Explorer not configured"))))
+
+(defn- design-route [conn]
+  (when (and (= "get" (web/method conn)) (= "/design.css" (web/path conn)))
+    (let [doc (o/read-doc (File/read! doc-path))
+          lang (get design/languages (get-in doc [:meta :design]))]
+      (if lang
+        (web/bytes (web/resp-header conn "cache-control" "no-store") "text/css" (str (:css lang)))
+        (web/text conn 404 "No design language")))))
+
 (defn router [conn]
  (or (client-only conn)
+     (explorer-route conn)
+     (design-route conn)
      (when-not (audience/locked?) (sharing/route conn doc-path (fn [text] (publication-options conn text))
        (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
      (when-not (audience/locked?) (review/route conn doc-path))

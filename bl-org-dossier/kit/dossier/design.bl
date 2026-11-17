@@ -16,6 +16,7 @@
 
 (ns dossier.design
   (:require [dossier.design.forest :as forest] [dossier.design.cassette :as cassette]
+            [dossier.design.cari :as cari]
             [dossier.tone :as tone]))
 
 (def languages
@@ -23,7 +24,7 @@
    {:name :title :fonts [href] :css :font :light :dark :palette :type :radii :shadows :motion}
    A language with several faces may name :font-body, :font-ui, :font-display
    and :font-data; each falls back to :font."
-  {"forest" forest/language "cassette" cassette/language})
+  {"forest" forest/language "cassette" cassette/language "cari" cari/language})
 
 (defn- product-css
   "Languages that live with their product (a private repository, say): CSS

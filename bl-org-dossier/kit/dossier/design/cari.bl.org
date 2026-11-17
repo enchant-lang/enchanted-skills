@@ -1,0 +1,268 @@
+#+title: CARI — an archive language for living code
+#+subtitle: White paper, a black disc, thin gray rules, Epilogue, gray index bars and square specimen tiles: the Consumer Aesthetics Research Institute's catalog voice, adapted for dossiers.
+#+kicker: enchanted-skills / bl-org-dossier · design language · dossier.design.cari
+#+date: 2026-11-14
+#+status: New language · sampled from cari.institute's stylesheet and pages, 2026-11-14 · dark mode proposed here
+#+author: Claude for Othman
+#+design: cari
+
+* In one breath
+#+begin_lede
+The Consumer Aesthetics Research Institute keeps a visual lexicon the way a
+field station keeps specimens: a white page, a black disc, one gray rule, a
+lowercase index, and a gallery you can open. Everything is a record with a
+name, a summary, a timeline and a set of examples. This module turns that
+catalog voice into a dossier language. It is also its own specimen page.
+#+end_lede
+
+#+begin_stats
+1 | black disc | the mark is a filled circle and a lowercase word, nothing else
+4 | greys do the work | #ffffff paper · #fdfdfd card · #e7e7e7 index bar · #cdcdcd rule
+1 | green action | #51ae39, reserved for the one button that moves the work
+2 | registers | white archive by day; a black archive at night
+#+end_stats
+
+* Palette
+Day on the left of each chip, night on the right.
+
+#+begin_palette :design cari
+#+end_palette
+
+* Type
+Epilogue carries the page; mono carries paths and facts.
+
+#+begin_type :design cari
+#+end_type
+
+* Shape
+Thin borders, small radii, no shadows. A record is a sheet of paper, not a
+card. Circles are reserved for the mark and the icon tiles.
+
+#+begin_shape :design cari
+#+end_shape
+
+* The module
+The cells below /are/ =dossier.design.cari=. =bl doc run= proves them; the kit
+loads them.
+
+#+begin_src beam-lisp :id tokens
+(ns dossier.design.cari)
+
+(def display "Epilogue,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif")
+(def ui display)
+(def mono "'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace")
+
+(def light
+  "Sampled from cari.institute/css/styles.css (2026-11-14): white ground,
+   #fdfdfd inputs, #e7e7e7 index bars, #cdcdcd rules, black ink, one green
+   action, one red exception."
+  {:paper "#ffffff" :card "#fdfdfd" :field "#f5f5f5" :inset "#f0f0f0" :soft "#e7e7e7"
+   :line "#cdcdcd" :edge "#b9b9b9"
+   :ink "#000000" :secondary "#333333" :muted "#5f5f5f"
+   :forest "#51ae39" :deep "#274d1c" :lime "#e9f4e4" :focus "#51ae39" :progress "#51ae39" :on-forest "#ffffff"
+   :success "#3f8a2c" :success-bg "#eaf5e7" :pending "#9a6a00" :pending-bg "#fff4d9"
+   :danger "#990000" :danger-bg "#f7e6e6" :neutral "#5f5f5f" :neutral-bg "#efefef"
+   :sage "#51ae39" :sage-bg "#eaf5e7" :sand "#8a8a8a" :sand-bg "#f1f1f1"
+   :lilac "#990000" :lilac-bg "#f7e6e6"})
+
+(def dark
+  "The black archive: the same thin rules and gray index bars, inverted."
+  {:paper "#0b0b0b" :card "#141414" :field "#1b1b1b" :inset "#202020" :soft "#262626"
+   :line "#333333" :edge "#444444"
+   :ink "#f2f2f2" :secondary "#c9c9c9" :muted "#9d9d9d"
+   :forest "#7ed957" :deep "#d8f5cd" :lime "#22331c" :focus "#7ed957" :progress "#51ae39" :on-forest "#0b0b0b"
+   :success "#7ed957" :success-bg "#1c2a18" :pending "#e0a640" :pending-bg "#2e2414"
+   :danger "#ff6b6b" :danger-bg "#301616" :neutral "#b0b0b0" :neutral-bg "#202020"
+   :sage "#7ed957" :sage-bg "#1c2a18" :sand "#9d9d9d" :sand-bg "#1e1e1e"
+   :lilac "#ff6b6b" :lilac-bg "#301616"})
+
+(def palette
+  [["Ground" [:paper :card :field :inset :soft]]
+   ["Rules" [:line :edge]]
+   ["Ink" [:ink :secondary :muted]]
+   ["Accent" [:forest :deep :lime :progress]]
+   ["States" [:success :pending :danger :neutral]]
+   ["State tints" [:success-bg :pending-bg :danger-bg :neutral-bg]]])
+
+(def type-scale
+  [{:role "Display" :size 56 :lh 1.02 :weight 600 :ls -1.8 :sample "Understory"}
+   {:role "Section" :size 34 :lh 1.15 :weight 600 :ls -0.8 :sample "The function card"}
+   {:role "Record" :size 24 :lh 1.25 :weight 600 :ls -0.4 :sample "codebase/index-source"}
+   {:role "Body" :size 18 :lh 1.8 :weight 400 :ink :secondary :sample "One name, its source, its callers and the evidence."}
+   {:role "Label" :size 13 :lh 1.5 :weight 600 :ink :muted :sample "namesake"}
+   {:role "Data" :family mono :size 12.5 :lh 1.6 :weight 400 :ink :muted :sample ":call/callee \"index-source\""}])
+
+(def radii [[:tile 10] [:record 10] [:control 4] [:chip 2] [:icon 20]])
+(def shadows [[:rest "none"] [:hover "none"] [:sheet "0 0 0 1px #cdcdcd"]])
+(def motion
+  [{:name "fill" :ms 120 :ease "linear" :use "A hover fills a gray index bar." :from "background:#fdfdfd" :to "background:#e7e7e7"}
+   {:name "reveal" :ms 180 :ease "ease-out" :use "A gallery opens below its bar." :from "opacity:0;transform:translateY(-4px)" :to "opacity:1;transform:none"}
+   {:name "select" :ms 160 :ease "ease-out" :use "A tile is chosen and the viewer opens." :from "outline:0 solid #51ae39" :to "outline:2px solid #51ae39"}])
+
+(assert (= (set (keys light)) (set (keys dark))))
+(assert (every? (fn [[_ ks]] (every? (fn [k] (and (get light k) (get dark k))) ks)) palette))
+{:tokens (count light) :type-steps (count type-scale) :greys (map (fn [k] (get light k)) [:paper :card :soft :line])}
+#+end_src
+#+RESULTS: tokens
+: {:tokens 30, :type-steps 6, :greys ("#ffffff" "#fdfdfd" "#e7e7e7" "#cdcdcd")}
+
+
+#+begin_src beam-lisp :id css
+(defn- vars [m] (join ";" (for [[k v] m] (str "--f-" (name k) ":" v))))
+(defn- shadow-vars [ss] (join ";" (for [[k v] ss] (str "--f-shadow-" (name k) ":" v))))
+
+(def ^:private kit-map
+  "The kit's mockup variables, bound to CARI tokens."
+  (str "--bg:var(--f-paper);--card:var(--f-card);--paper:var(--f-soft);--line:var(--f-line);--latte:var(--f-edge);"
+       "--ink:var(--f-ink);--muted:var(--f-muted);--mocha:var(--f-secondary);--clay:var(--f-forest);"
+       "--sage:var(--f-success);--ochre:var(--f-pending);--slate:var(--f-neutral);--plum:var(--f-lilac);"
+       "--sans:" ui ";--serif:" display ";--mono:" mono ";"
+       "--k-bg:var(--f-paper);--k-paper:var(--f-card);--k-paper2:var(--f-field);--k-clay:var(--f-inset);--k-clay2:var(--f-soft);"
+       "--k-hair:var(--f-line);--k-hair2:var(--f-edge);--k-ink:var(--f-ink);--k-ink2:var(--f-secondary);--k-ink3:var(--f-muted);"
+       "--k-signal:var(--f-forest);--k-signal2:var(--f-deep);--k-on:var(--f-on-forest);--k-honey:var(--f-lime);"
+       "--k-honeyink:var(--f-pending);--k-hl:var(--f-success-bg);--k-ok:var(--f-success);--k-okbg:var(--f-success-bg);"
+       "--k-danger:var(--f-danger);--k-voice:" ui ";--k-doc:" ui ";--k-display:" display ";"))
+
+(def ^:private at ":root .design-cari.design-cari")
+(def ^:private disc
+  "CARI's mark: one filled black disc, no ornament."
+  (str "content:\"\";display:inline-block;width:18px;height:18px;border-radius:50%;"
+       "background:var(--f-ink);flex:0 0 18px;vertical-align:-3px;"))
+
+(def ^:private components
+  (str
+    ".design-cari .screen,.design-cari .d-frame{font-family:" ui ";background:var(--f-paper);color:var(--f-ink)}"
+    ".design-cari .s-flow{overflow-y:auto;scrollbar-width:none}"
+    ".design-cari .s-bar,.design-cari .s-sub,.design-cari .s-chips,.design-cari .s-section,.design-cari .s-strip,.design-cari .s-actions{flex:0 0 auto}"
+    ".design-cari .s-bar{border-bottom:1px solid var(--f-line);padding-bottom:8px;gap:8px}"
+    ".design-cari .s-bar::before{" disc "}"
+    ".design-cari .s-bar b{font:600 21px/1.2 " ui ";letter-spacing:-.5px;text-transform:lowercase}"
+    ".design-cari .s-bar .s-right{font:500 11px " mono ";color:var(--f-muted);text-transform:lowercase}"
+    ".design-cari .s-sub{font:400 13px/1.6 " ui ";color:var(--f-muted);margin-top:2px}"
+    ".design-cari .s-card{border-radius:10px;background:var(--f-card);border:1px solid var(--f-line);box-shadow:none;padding:11px 12px}"
+    ".design-cari .s-card .s-dot{width:7px;height:7px;border-radius:50%;margin-top:6px;background:var(--f-line);box-shadow:none;animation:none}"
+    ".design-cari .s-card.turn .s-dot,.design-cari .s-card.approve .s-dot{background:var(--f-pending)}"
+    ".design-cari .s-card.run .s-dot{background:var(--f-forest)}"
+    ".design-cari .s-card.done .s-dot{background:var(--f-success)}"
+    ".design-cari .s-card.fail .s-dot,.design-cari .s-card.idle .s-dot{background:var(--f-danger)}"
+    ".design-cari .s-card-top b{font:600 16px/1.3 " ui ";letter-spacing:-.25px}"
+    ".design-cari .s-card-top span{font:500 10.5px " ui ";color:var(--f-muted);text-transform:lowercase}"
+    ".design-cari .s-card-body{font:400 13px/1.65 " ui ";color:var(--f-secondary)}"
+    ".design-cari .s-chips{gap:18px;border-bottom:1px solid var(--f-line);padding-bottom:2px}"
+    ".design-cari .s-chips span{font:500 12px " ui ";text-transform:lowercase;color:var(--f-muted);border:0;border-radius:0;padding:4px 0 5px;background:none}"
+    ".design-cari .s-chips .on{color:var(--f-ink);border-bottom:2px solid var(--f-ink);background:none}"
+    ".design-cari .s-tabs .on{border-bottom:2px solid var(--f-ink);background:none;border-radius:0}"
+    ".design-cari .s-section{font:600 13px/1.4 " ui ";text-transform:lowercase;color:var(--f-ink);"
+    "background:var(--f-soft);border:1px solid var(--f-line);border-radius:4px;padding:6px 9px;margin:12px 0 8px}"
+    ".design-cari .s-section::before{content:\"▾ \";font-size:9px;color:var(--f-muted)}"
+    ".design-cari .s-strip{border-radius:4px;background:var(--f-soft);border:1px solid var(--f-line);color:var(--f-ink);font-weight:500}"
+    ".design-cari .ib,.design-cari .btn{border-radius:4px;font-family:" ui ";font-weight:500;letter-spacing:0}"
+    ".design-cari .ib{border-color:var(--f-line);background:var(--f-card);color:var(--f-ink)}"
+    ".design-cari .ib.primary,.design-cari .btn.primary{background:var(--f-forest);border-color:var(--f-forest);color:var(--f-on-forest)}"
+    ".design-cari .btn.sg-link.primary{background:var(--f-forest);border-color:var(--f-forest);color:var(--f-on-forest)}"
+    ".design-cari .btn.small{border-radius:4px;background:var(--f-card);border:1px solid var(--f-line);color:var(--f-ink)}"
+    ".design-cari .s-banner.ok{background:var(--f-success-bg);color:var(--f-success);border:1px solid var(--f-success);border-radius:4px}"
+    ".design-cari .s-banner.warn{background:var(--f-danger-bg);color:var(--f-danger);border:1px solid var(--f-danger);border-radius:4px}"
+    ".design-cari .s-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-bottom:1px solid var(--f-line);padding:7px 0}"
+    ".design-cari .s-row b{font-weight:600;color:var(--f-ink);text-align:right}"
+    ".design-cari .s-card-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}"
+    ".design-cari .s-row span:first-child{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--f-line)}"
+    ".design-cari .machine,.design-cari .s-machine{border-radius:10px;border:1px solid var(--f-line);background:var(--f-card)}"
+    ".design-cari .s-machine .glyph,.design-cari .s-pick .glyph{border-radius:20%;background:var(--f-soft);color:var(--f-ink)}"
+    ".design-cari .s-input,.design-cari .s-search{background:var(--f-field);border:1px solid var(--f-line);border-radius:4px;color:var(--f-muted)}"
+    ".design-cari .s-send{background:var(--f-forest);color:var(--f-on-forest)}"
+    ".design-cari .s-sheet{border-radius:10px 10px 0 0;box-shadow:var(--f-shadow-sheet)}"
+    ".design-cari .d-frame .d-nav{border-right:1px solid var(--f-line)}"
+    ".design-cari .d-head h1{font-family:" display ";font-weight:600}"))
+
+(def ^:private report
+  (str
+    "html[data-design=\"cari\"] body{background:var(--bg);font-family:" ui ";color:var(--ink);font-size:17px;line-height:1.8}"
+    "html[data-design=\"cari\"] header.doc{padding:34px 0 20px;border-bottom:1px solid var(--line)}"
+    "html[data-design=\"cari\"] header.doc::before{" (str "content:\"\";display:block;width:34px;height:34px;border-radius:50%;background:var(--f-ink);margin-bottom:18px;") "}"
+    "html[data-design=\"cari\"] .kicker{font:500 11.5px " mono ";letter-spacing:.02em;text-transform:lowercase;color:var(--muted)}"
+    "html[data-design=\"cari\"] header.doc h1{font:600 clamp(40px,7vw,68px)/1.02 " display ";letter-spacing:-.035em;margin:6px 0 12px;max-width:14ch}"
+    "html[data-design=\"cari\"] header.doc .sub{font:400 clamp(17px,2.4vw,21px)/1.6 " ui ";color:var(--muted);max-width:52ch}"
+    "html[data-design=\"cari\"] header.doc .meta{font:400 12px " mono ";color:var(--muted);text-transform:lowercase;border-top:1px solid var(--line);padding-top:10px;margin-top:18px}"
+    "html[data-design=\"cari\"] .tally{border-radius:4px;border:1px solid var(--line);background:var(--card);max-width:none}"
+    "html[data-design=\"cari\"] .tally-n{font-family:" display ";font-weight:600}"
+    "html[data-design=\"cari\"] nav.chips{border-bottom:1px solid var(--line);gap:4px}"
+    "html[data-design=\"cari\"] nav.chips a{border-radius:2px;padding:6px 11px;font-size:13px;text-transform:lowercase;color:var(--muted);border:1px solid transparent}"
+    "html[data-design=\"cari\"] nav.chips a.on{background:var(--f-soft);color:var(--ink);border-color:var(--line)}"
+    "html[data-design=\"cari\"] section.part>h2{font:600 clamp(28px,4vw,38px)/1.12 " display ";letter-spacing:-.025em;margin:44px 0 8px;padding-bottom:10px;border-bottom:1px solid var(--line)}"
+    "html[data-design=\"cari\"] h3{font:600 20px/1.3 " display ";letter-spacing:-.015em}"
+    "html[data-design=\"cari\"] h4{font:600 16px/1.3 " display "}"
+    "html[data-design=\"cari\"] p,html[data-design=\"cari\"] li{font-size:17px;line-height:1.8;color:var(--secondary)}"
+    "html[data-design=\"cari\"] .lede{font:400 clamp(20px,3vw,26px)/1.55 " ui ";letter-spacing:-.02em;max-width:64ch;color:var(--ink)}"
+    "html[data-design=\"cari\"] .lede strong{font-weight:600;color:var(--ink)}"
+    "html[data-design=\"cari\"] .stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);gap:0}"
+    "html[data-design=\"cari\"] .stat{border:0;border-left:1px solid var(--line);border-radius:0;padding:18px 20px;background:none}"
+    "html[data-design=\"cari\"] .stat:first-child{border-left:0}"
+    "html[data-design=\"cari\"] .stat b{font:600 clamp(30px,4.4vw,44px)/1 " display ";letter-spacing:-.03em;color:var(--ink)}"
+    "html[data-design=\"cari\"] .stat span{font:600 11px " ui ";text-transform:lowercase;letter-spacing:.02em;color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line)}"
+    "html[data-design=\"cari\"] .stat small{font-size:12.5px;color:var(--muted)}"
+    "html[data-design=\"cari\"] .rosetta{border-radius:10px;border:1px solid var(--line);background:var(--card)}"
+    "html[data-design=\"cari\"] .r-head{background:var(--f-soft)}"
+    "html[data-design=\"cari\"] .r-head>div{font:600 11px " ui ";text-transform:lowercase;letter-spacing:.02em;color:var(--ink)}"
+    "html[data-design=\"cari\"] .r-row>div{border-color:var(--line)}"
+    "html[data-design=\"cari\"] .r-row>div:first-child{font-weight:600}"
+    "html[data-design=\"cari\"] .callout{border-radius:10px;border:1px solid var(--line);background:var(--field);border-left-width:1px}"
+    "html[data-design=\"cari\"] .callout b{font:600 17px " display "}"
+    "html[data-design=\"cari\"] .terms dt{font:600 18px " display ";text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}"
+    "html[data-design=\"cari\"] .principles .p{border-radius:10px;border:1px solid var(--line);background:var(--card)}"
+    "html[data-design=\"cari\"] article.job,html[data-design=\"cari\"] article.decision,html[data-design=\"cari\"] article.ask{border-radius:10px;border:1px solid var(--line);background:var(--card);box-shadow:none}"
+    "html[data-design=\"cari\"] article.ask{border-top:3px solid var(--f-forest)}"
+    "html[data-design=\"cari\"] .job .jtbd{font:400 19px/1.65 " ui ";letter-spacing:-.01em}"
+    "html[data-design=\"cari\"] .chip{border-radius:2px;border-color:var(--line);background:var(--soft);font:500 10px " mono ";text-transform:lowercase;letter-spacing:0}"
+    "html[data-design=\"cari\"] .status{border-radius:2px;font:600 10px " ui ";text-transform:lowercase;background:var(--soft);color:var(--ink)}"
+    "html[data-design=\"cari\"] .status.proposed{background:var(--f-lime);color:var(--f-success)}"
+    "html[data-design=\"cari\"] .status.decided{background:var(--f-forest);color:var(--f-on-forest)}"
+    "html[data-design=\"cari\"] .fb-opts .opt{border-radius:4px;border:1px solid var(--line);background:var(--card);font-size:13px}"
+    "html[data-design=\"cari\"] .fb-opts .opt.on{background:var(--f-soft);border-color:var(--ink);color:var(--ink)}"
+    "html[data-design=\"cari\"] .fb-row .send{border-radius:4px;background:var(--f-forest);color:var(--f-on-forest)}"
+    "html[data-design=\"cari\"] .cell{border-radius:10px;border:1px solid var(--line);background:var(--card)}"
+    "html[data-design=\"cari\"] .cell-head{background:var(--f-soft);border-radius:0}"
+    "html[data-design=\"cari\"] .device{border:1px solid var(--f-ink);background:var(--f-ink);border-radius:14px;box-shadow:none}"
+    "html[data-design=\"cari\"] .statusbar{background:var(--f-paper)}"
+    "html[data-design=\"cari\"] .statusbar .notch{display:none}"
+    "html[data-design=\"cari\"] a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--f-line)}"
+    "html[data-design=\"cari\"] a:hover{text-decoration-color:var(--f-forest)}"
+    "html[data-design=\"cari\"] .side-title{font:600 19px " display ";text-transform:lowercase;letter-spacing:-.01em}"
+    "html[data-design=\"cari\"] .side-title::before{" (str "content:\"\";display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--f-ink);margin-right:9px;vertical-align:-1px;") "}"
+    "html[data-design=\"cari\"] .side-sec{border-radius:4px;font-size:13.5px;color:var(--muted)}"
+    "html[data-design=\"cari\"] .side-item.on .side-sec{background:var(--f-soft);color:var(--ink);box-shadow:none;font-weight:600}"
+    "html[data-design=\"cari\"] .side-all{text-transform:lowercase}"
+    "html[data-design=\"cari\"] .pager a{color:var(--muted);text-decoration:none;font-size:13px}"
+    "html[data-design=\"cari\"] .roadmap .col{border:1px solid var(--line);border-radius:10px;background:var(--card)}"
+    "html[data-design=\"cari\"] .roadmap .col h4{background:var(--f-soft);padding:8px 10px;border-bottom:1px solid var(--line);text-transform:lowercase}"
+    "html[data-design=\"cari\"] .milestones .m-tile{border-radius:10px}"
+    "html[data-design=\"cari\"] .component-explorer{border:1px solid var(--line);border-radius:10px;background:var(--card)}"
+    "html[data-design=\"cari\"] .explorer-head{border-bottom:1px solid var(--line);padding:10px 12px}"
+    "html[data-design=\"cari\"] .explorer-head h3{display:none!important}"
+    "html[data-design=\"cari\"] .sg-app .d-title::before{content:\"\";display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--f-ink);margin-right:8px;vertical-align:-1px}"
+    "html[data-design=\"cari\"] .sg-app-top{border-bottom:1px solid var(--line)}"
+    "html[data-design=\"cari\"] .explorer-views{background:var(--f-soft);border-bottom:1px solid var(--line);padding:6px 10px}"
+    "html[data-design=\"cari\"] .explorer-views a{font-size:12px;text-transform:lowercase;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:3px 8px;background:var(--card)}"))
+
+(def stylesheet
+  (str at "{" (vars light) ";" (shadow-vars shadows) ";" kit-map "}"
+       ":root[data-theme=\"dark\"] .design-cari.design-cari{" (vars dark) ";" (shadow-vars shadows) "}"
+       "html[data-design=\"cari\"]{" (vars light) ";" (shadow-vars shadows) "}"
+       "html[data-design=\"cari\"][data-theme=\"dark\"]{" (vars dark) "}" report components))
+
+(def language
+  {:name "cari" :title "CARI archive" :font ui
+   :font-display display :font-body ui :font-ui ui :font-data mono
+   :fonts ["https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500;600;700&display=swap"
+           "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"]
+   :light light :dark dark :palette palette :type type-scale :radii radii :shadows shadows :motion motion
+   :css stylesheet})
+
+(assert (includes? stylesheet "--f-forest:#51ae39"))
+(assert (includes? stylesheet "Epilogue"))
+(assert (every? (fn [[_ ks]] (every? (fn [k] (get dark k)) ks)) palette))
+{:css-bytes (count stylesheet) :fonts (count (:fonts language))}
+#+end_src
+#+RESULTS: css
+: {:fonts 2, :css-bytes 17447}
+
