@@ -1,0 +1,5 @@
+(ns dossier.share.identity-dependency-test
+ (:require [dossier.share.accounts :as accounts] [dossier.share.worker] [dossier.share.read]))
+(deftest ordinary-rendering-loads-without-a-provider-and-references-stay-closed
+ (is (nil? (accounts/from-env)))
+ (is (try (accounts/invoke :arbitrary-code []) false (catch _ true))))
