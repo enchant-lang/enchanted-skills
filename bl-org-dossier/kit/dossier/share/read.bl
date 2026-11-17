@@ -1,5 +1,5 @@
 ;; The same gate covers entries, assets, HEAD and byte ranges.
-(ns dossier.share.read (:require [web] [bl.json :as json] [dossier.share.model :as model] [ora.accounts.client :as accounts]))
+(ns dossier.share.read (:require [web] [bl.json :as json] [dossier.share.model :as model] [dossier.share.accounts :as accounts]))
 (defn read-json [path] (try (json/decode (File/read! path)) (catch _ nil)))
 (defn unavailable [c] (web/text c 404 "Ce lien n'est plus disponible."))
 (defn router [root host original]

@@ -1,0 +1,20 @@
+;; Optional first-party provider dependency. Ordinary dossier rendering and
+;; explicit legacy link-only hosts do not require a private provider checkout.
+;; Only these fixed, trusted SDK references can be resolved; request data is
+;; never source code. Configured identity fails closed if its SDK is absent.
+(ns dossier.share.accounts)
+(def references
+ {:open "ora.accounts.client/open!" :call "ora.accounts.client/call!"
+  :routes "ora.accounts.client/routes" :token "ora.accounts.client/token"
+  :begin "ora.accounts.client/begin!" :safe-next "ora.accounts.client/safe-next"})
+(defn invoke [operation args]
+ (let [reference (get references operation)]
+  (when-not reference (throw (ex-info "Unknown client SDK operation" {})))
+  (apply (BeamLisp/eval reference) args)))
+(defn open! [config] (invoke :open [config]))
+(defn from-env [] (when-let [path (System/get_env "ORA_ACCOUNTS_CONFIG")] (open! path)))
+(defn call! [host operation value] (invoke :call [host operation value]))
+(defn routes [host request done] (invoke :routes [host request done]))
+(defn token [host request] (invoke :token [host request]))
+(defn begin! [host request next intent] (invoke :begin [host request next intent]))
+(defn safe-next [path] (invoke :safe-next [path]))

@@ -29,10 +29,13 @@ commercial proposal does not publish its entire PDF.
 
 * Client identity SDK
 
-The kit uses the pinned =Ora-Ventures/ora-clients= SDK for publication policy and
+Identity-enabled hosts use the pinned =Ora-Ventures/ora-clients= SDK for publication policy and
 reader sign-in. Add that release's =nix/client-sdk.nix= output to the BL path
 (=-p ${clientsSdk}/src=) and set =ORA_CLIENTS_SDK=${clientsSdk}=. Keep the SDK
 revision with the app deployment; there are no copied account modules in the kit.
+Ordinary rendering has no provider dependency. Identity configuration resolves
+only fixed SDK entry points and refuses startup/operations if the dependency is
+missing. Explicit legacy link-only hosting remains available independently.
 The public reader needs only the public Small Web provider and its private app
 credential. Client browsers never connect to Work. The authoring host retains
 its separate, read-only directory credential for choosing recipients.

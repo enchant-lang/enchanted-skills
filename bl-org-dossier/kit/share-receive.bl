@@ -1,6 +1,6 @@
 ; Private forced-command receiver. The wrapper holds the OS lock and pins owner/root.
 (ns dossier.share.receive
-  (:require [bl.json :as json] [dossier.share.model :as model] [dossier.share.archive :as archive] [ora.accounts.client :as accounts]))
+  (:require [bl.json :as json] [dossier.share.model :as model] [dossier.share.archive :as archive] [dossier.share.accounts :as accounts]))
 (def root (System/fetch_env! "DOSSIER_SHARE_DATA"))
 (def owner (System/fetch_env! "DOSSIER_SHARE_PUBLISHER"))
 (def authority (accounts/from-env))

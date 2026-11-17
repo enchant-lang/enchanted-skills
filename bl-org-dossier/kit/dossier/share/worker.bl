@@ -1,7 +1,7 @@
 ; Owner-side publication jobs; retained intent and receipts survive HTTP navigation.
 (ns dossier.share.worker
   (:require [bl.json :as json] [dossier.share.model :as model]
-            [dossier.share.export :as export] [dossier.share.archive :as archive] [ora.accounts.client :as accounts]))
+            [dossier.share.export :as export] [dossier.share.archive :as archive] [dossier.share.accounts :as accounts]))
 (def account-root (Path/expand "~/.local/state/dossier-share"))
 (def config-path (Path/expand "~/.config/dossier-share/config.json"))
 (def jobs (atom {}))

@@ -1,5 +1,5 @@
 ; Pure publication and route validation. No request can choose a filesystem root.
-(ns dossier.share.model (:require [bl.json :as json] [ora.accounts.protocol :as protocol]))
+(ns dossier.share.model (:require [bl.json :as json]))
 
 (def max-bytes (* 128 1024 1024))
 (def max-files 4096)
@@ -35,6 +35,14 @@
     (let [view (get (URI/decode_query (or query "")) "view" "bureaux")]
       (when (id? view) (str "views?view=" view)))
     (when (or (= path "") (relative? path)) (if (= path "") "index.html" path))) (catch _ nil)))
+;; Artifact admission is its own writer contract; the account provider owns
+;; the independent, authoritative audience policy checked before serving bytes.
+(def artifact-lifecycle
+ {:initial :unpublished
+  :edges {[:unpublished :publish] :active [:active :publish] :active
+          [:active :revoke] :revoked [:revoked :publish] :active}})
+(defn artifact-step [state event]
+ (or (get-in artifact-lifecycle [:edges [state event]]) (refuse "Invalid artifact lifecycle transition")))
 (defn advance [prior owner request]
   (let [action (get request "action") id (get request "id") rev (get request "revision")
         expected (get request "expected" 0) sequence (get prior "sequence" 0)
@@ -51,7 +59,7 @@
       (do
         (when-not (= expected sequence) (refuse "Publication changed; refresh and retry"))
         (when (and (= action "publish") (not (hex? rev))) (refuse "Invalid artifact revision"))
-        (protocol/step :publication (if prior (if (get prior "revoked") :revoked :active) :unpublished) (keyword action))
+        (artifact-step (if prior (if (get prior "revoked") :revoked :active) :unpublished) (keyword action))
         {"version" 1 "id" id "owner" owner "sequence" (inc sequence) "fingerprint" fingerprint
          "visibility" visibility "clients" (if (= visibility "link") [] (vec (sort (distinct clients))))
          "operation" (get request "operation") "revision" (or rev (get prior "revision"))
