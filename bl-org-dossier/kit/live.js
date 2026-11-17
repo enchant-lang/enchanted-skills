@@ -242,24 +242,78 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
     if (opt) { opt.closest('form').classList.add('picked'); opt.parentElement.querySelectorAll('.opt').forEach(b => b.classList.toggle('on', b === opt && !b.classList.contains('on'))); }
   });
 
+  const feedbackDraftKey = id => 'dossier-feedback:' + location.origin + location.pathname + ':' + id;
+  const feedbackMessage = (f, text, state) => {
+    f.dataset.saveState = state;
+    let status = f.querySelector('[data-feedback-save-state]');
+    if (!status) { status = document.createElement('p'); status.dataset.feedbackSaveState = ''; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); f.append(status); }
+    status.textContent = text;
+  };
+  const feedbackText = (fr, en) => document.documentElement.lang.startsWith('fr') ? fr : en;
+  function keepFeedbackDraft(body) { try { localStorage.setItem(feedbackDraftKey(body.id), JSON.stringify(body)); } catch {} }
+  function restoreFeedbackDrafts() {
+    document.querySelectorAll('form.fb[data-id]').forEach(f => {
+      if (f.dataset.feedbackDraftRestored) return;
+      f.dataset.feedbackDraftRestored = 'true';
+      let draft; try { draft = JSON.parse(localStorage.getItem(feedbackDraftKey(f.dataset.id)) || 'null'); } catch {}
+      if (!draft || draft.id !== f.dataset.id || typeof draft.note !== 'string' || typeof draft.answer !== 'string') return;
+      const area = f.querySelector('textarea'), selected = f.querySelector('.opt.on')?.dataset.v || '';
+      if (area.value === draft.note && selected === draft.answer) { try { localStorage.removeItem(feedbackDraftKey(f.dataset.id)); } catch {} return; }
+      area.value = draft.note;
+      f.querySelectorAll('.opt').forEach(option => option.classList.toggle('on', option.dataset.v === draft.answer));
+      feedbackMessage(f, feedbackText('Brouillon récupéré. Il reste à confirmer son enregistrement.', 'Draft recovered. Its save still needs confirmation.'), 'draft');
+    });
+  }
+  restoreFeedbackDrafts();
+  new MutationObserver(restoreFeedbackDrafts).observe(document.getElementById('doc'), {childList:true});
+
   document.addEventListener('submit', async (e) => {
     const f = e.target.closest('form.fb'); if (!f) return;
     e.preventDefault();
     const on = f.querySelector('.opt.on');
     const body = { id: f.dataset.id, answer: on ? on.dataset.v : '', note: f.querySelector('textarea').value };
     if (f.classList.contains('sending')) return;
+    keepFeedbackDraft(body);
     busy = true; f.classList.add('sending');
+    feedbackMessage(f, feedbackText('Enregistrement…', 'Saving…'), 'saving');
+    let confirmed = false, definitiveFailure = false;
     try {
       const res = await fetch('answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const text = await res.text();
       let j;
       try { j = text ? JSON.parse(text) : null; } catch { j = null; }
-      if (!res.ok) throw new Error(j?.error || `The server returned HTTP ${res.status}. Your draft is still here; try again.`);
-      if (!j || j.ok !== true || typeof j.rev !== 'string') throw new Error('The server did not confirm the save. Your draft is still here; try again.');
-      toast(body.answer ? 'Written into the .bl.org — Claude will read it' : 'Answer cleared');
-      busy = false; document.activeElement && document.activeElement.blur(); await refresh(true);
-    } catch (err) { toast('Not saved: ' + err.message); }
-    finally { busy = false; f.classList.remove('sending'); }
+      if (!res.ok) { definitiveFailure = res.status >= 400 && res.status < 500; throw new Error(j?.error || `HTTP ${res.status}`); }
+      if (!j || j.ok !== true || typeof j.rev !== 'string') throw new Error('The server did not confirm the save.');
+      confirmed = true;
+    } catch (err) {
+      // A lost response is ambiguous: the file may already contain the note.
+      // Read back the exact answer before suggesting another write.
+      if (!definitiveFailure) {
+        try {
+          const res = await fetch('answers', {cache:'no-store'});
+          if (!res.ok) throw new Error('Readback unavailable');
+          const items = await res.json();
+          confirmed = Array.isArray(items) && items.some(item => item.id === body.id && (item.answer || '') === body.answer && (item.note || '') === body.note);
+        } catch {}
+      }
+      if (!confirmed) {
+        const current = {id:body.id, answer:f.querySelector('.opt.on')?.dataset.v || '', note:f.querySelector('textarea').value};
+        keepFeedbackDraft(current);
+        feedbackMessage(f, definitiveFailure ? feedbackText('Enregistrement refusé : ', 'Save refused: ') + err.message + feedbackText(' · Brouillon conservé.', ' · Draft kept.') : feedbackText('Enregistrement non confirmé. Brouillon conservé ; réessayez lorsque la connexion revient.', 'Save not confirmed. Draft kept; try again when the connection returns.'), definitiveFailure ? 'refused' : 'unknown');
+      }
+    } finally {
+      busy = false; f.classList.remove('sending');
+    }
+    if (confirmed) {
+      const area = f.querySelector('textarea');
+      area.defaultValue = body.note;
+      if (area.value === body.note && (f.querySelector('.opt.on')?.dataset.v || '') === body.answer) { try { localStorage.removeItem(feedbackDraftKey(body.id)); } catch {} }
+      else keepFeedbackDraft({id:body.id, answer:f.querySelector('.opt.on')?.dataset.v || '', note:area.value});
+      feedbackMessage(f, feedbackText('Enregistré dans le document.', 'Saved in the document.'), 'saved');
+      toast(feedbackText('Enregistré', 'Saved'));
+      document.activeElement && document.activeElement.blur();
+      await refresh(true);
+    }
   });
 
   // ── the client's reading: the same file without its internal parts (dossier/audience.bl) ──
