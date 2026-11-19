@@ -1228,3 +1228,69 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply); else apply();
 })();
+
+// Optional companion reader for linked, same-origin desk screens.
+(() => {
+  const root = document.documentElement;
+  if (root.dataset.readerPlan) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'reader-plan';
+    function setPlan(hidden) {
+      root.classList.toggle('reader-plan-hidden', hidden);
+      toggle.textContent = hidden ? 'Afficher le plan' : 'Masquer le plan';
+      toggle.setAttribute('aria-expanded', String(!hidden));
+    }
+    setPlan(false);
+    toggle.onclick = () => setPlan(!root.classList.contains('reader-plan-hidden'));
+    document.querySelector('.live').prepend(toggle);
+  }
+  if (!root.dataset.readerScreens) return;
+  const panel = document.createElement('aside');
+  panel.className = 'reader-screens';
+  panel.hidden = true;
+  panel.setAttribute('aria-label', 'Maquette');
+  panel.innerHTML = '<div class="reader-grip" title="Redimensionner"></div><header><strong></strong><a target="_blank" rel="noopener">Ouvrir dans un onglet</a><button type="button" aria-label="Fermer la maquette">×</button></header><iframe title="Maquette"></iframe>';
+  document.body.append(panel);
+  const frame = panel.querySelector('iframe');
+  const full = panel.querySelector('a');
+  const close = panel.querySelector('button');
+  const title = panel.querySelector('strong');
+  let trigger;
+  function dismiss() {
+    panel.hidden = true;
+    root.classList.remove('reader-open');
+    frame.removeAttribute('src');
+    trigger?.focus({preventScroll:true});
+  }
+  function escape(event) {
+    if (event.key === 'Escape' && !panel.hidden) dismiss();
+  }
+  close.onclick = dismiss;
+  document.addEventListener('keydown', escape);
+  frame.addEventListener('load', () => {
+    if (!frame.contentDocument || panel.hidden) return;
+    frame.contentDocument.addEventListener('keydown', escape);
+    full.href = frame.contentDocument.URL;
+    if (frame.contentDocument.title) title.textContent = frame.contentDocument.title;
+  });
+  document.addEventListener('click', event => {
+    const link = event.target.closest('#doc a[href]');
+    if (!link || event.button || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    const url = new URL(link.href);
+    if (url.origin !== location.origin || !url.pathname.endsWith('/views') || !url.searchParams.get('view')) return;
+    event.preventDefault();
+    trigger = link;
+    full.href = frame.src = link.href;
+    title.textContent = link.textContent;
+    panel.hidden = false;
+    root.classList.add('reader-open');
+    close.focus({preventScroll:true});
+  });
+  const grip = panel.querySelector('.reader-grip');
+  grip.onpointerdown = event => {
+    grip.setPointerCapture(event.pointerId);
+    grip.onpointermove = move => root.style.setProperty('--reader-width', (innerWidth - move.clientX) + 'px');
+  };
+  grip.onlostpointercapture = () => { grip.onpointermove = null; };
+})();

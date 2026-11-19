@@ -251,7 +251,9 @@
   (let [fr (= "fr" (get-in doc [:meta :language])) locked (get-in doc [:meta :locked])
         css (str css "\n" (design/css doc))]
   [:html {:lang (or (get-in doc [:meta :language]) "en") :data-design (get-in doc [:meta :design])
-          :data-published (when (get-in doc [:meta :published]) "true")}
+          :data-published (when (get-in doc [:meta :published]) "true")
+          :data-reader-plan (when (= "repliable" (get-in doc [:meta :ora_plan])) "true")
+          :data-reader-screens (when (seq (get-in doc [:meta :ora_maquette])) "true")}
    [:head
     [:meta {:charset "utf-8"}]
     [:meta {:name "viewport" :content "width=device-width,initial-scale=1,viewport-fit=cover"}]

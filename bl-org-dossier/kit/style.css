@@ -1194,3 +1194,24 @@ article.job,article.decision,article.ask,article.schema,article.procedure,.film,
   .side-title{font-size:17px;margin-bottom:14px}
 }
 }
+
+/* Companion screens in documents that request a reading panel. */
+.reader-plan {display:none}
+@media(min-width:1000px) {
+  .live .reader-plan {display:inline-block}
+  .reader-plan-hidden .app2 {grid-template-columns:minmax(0,1fr);gap:0}
+  .reader-plan-hidden .app2>.side {display:none}
+}
+.reader-open {--reader-pane:clamp(360px,var(--reader-width,50vw),calc(100vw - 380px))}
+.reader-open body {padding-right:var(--reader-pane)}
+.reader-screens {position:fixed;inset:0 0 0 auto;z-index:50;width:var(--reader-pane);background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.reader-screens[hidden] {display:none}
+.reader-screens header {display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.reader-screens strong {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reader-screens iframe {width:100%;flex:1;min-height:0;border:0}
+.reader-grip {position:absolute;left:-5px;top:0;bottom:0;width:10px;cursor:col-resize;touch-action:none}
+@media(max-width:799px) {
+  .reader-open body {padding-right:0;overflow:hidden}
+  .reader-screens {width:100%}
+  .reader-grip {display:none}
+}
