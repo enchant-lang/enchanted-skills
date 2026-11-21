@@ -746,8 +746,8 @@
                      ty (if (> ay 0) (/ (+ 6 (/ BH 2)) ay) 1.0e9)
                      t (min tx ty)]
                  [(+ x1 (* t dx)) (+ y1 (* t dy))]))]
-    [:div.scrollx.graph-wrap {:data-hint "swipe ↔"}
-     [:svg {:class "graph" :viewBox (str "0 0 " W " " H) :style (str "min-width:" (n (* W 0.82)) "px")
+    [:div.scrollx.graph-wrap {:data-hint (when (> W 300) "swipe ↔")}
+     [:svg {:class "graph" :viewBox (str "0 0 " W " " H) :style (str "min-width:" (n (* W 0.82)) "px;max-width:" W "px;margin-inline:auto")
             :role "img" :aria-label (or (:title (:attrs b)) "graph")}
       [:defs [:marker {:id "gr-head" :viewBox "0 0 10 10" :refX "9" :refY "5" :markerUnits "userSpaceOnUse" :markerWidth "10" :markerHeight "10" :orient "auto-start-reverse"}
               [:path {:d "M0,0 L10,5 L0,10 z"}]]]
