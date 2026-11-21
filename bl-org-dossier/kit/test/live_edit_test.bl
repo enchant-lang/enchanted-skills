@@ -1,5 +1,5 @@
 (ns live-edit-test
-  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.storage :as storage] [dossier.live :as live] [live.hiccup :as h]))
+  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.storage :as storage] [dossier.live :as live] [dossier.include :as include] [live.hiccup :as h]))
 
 (def text "#+title: T\n\n* One\n\nPara one\nwraps.\n\n- a\n- b\n\n#+begin_ask :id q1 :title \"Why?\"\nBecause.\n#+end_ask\n")
 
@@ -62,3 +62,18 @@
       (is (= "* C\nx" (File/read! other)))
       (is (nil? (live/route nil other)) "no routes for a file that is not live")
       (finally (storage/install-writer! nil) (File/rm_rf dir)))))
+
+(deftest included-parts-stay-closed-and-own-lines-map-to-the-file
+  (let [dir (str "/tmp/dossier-include-" (erlang/unique_integer (list :positive)))]
+    (File/mkdir_p! dir)
+    (File/write! (str dir "/part.org") "Part one\nstill part.\n")
+    (try
+      (let [main "#+title: T\n\nOwn paragraph.\n\n#+include: part.org\nAfter the part.\n"
+            {:keys [text origins]} (include/expand-with-origins dir main)
+            out (html (pg/doc-h (include/own-lines origins (o/read-doc text))))]
+        (is (includes? text "Part one\nstill part."))
+        (is (includes? out "data-src=\"2:3\"") "own paragraph keeps its file lines")
+        (is (= 6 (count (filter some? origins))) "six main-file lines survive, the include line itself does not")
+        (is (includes? out "data-src=\"5:6\"") "a line after the part maps back past it")
+        (is (nil? (Regex/run (Regex/compile! "data-src=\"[0-9]+:[0-9]+\"[^>]*>Part one") out)) "the part's paragraph stays closed"))
+      (finally (File/rm_rf dir)))))

@@ -65,7 +65,7 @@
     (or (blank? owner) (= owner (web/req-header conn "tailscale-user-login")))))
 
 ;; Editing the source needs DOSSIER_OWNER; without one the page reads only.
-(defn- live-page [conn] (when-not (audience/locked?) (live/page conn doc-path)))
+(defn- live-page [conn] (when-not (audience/locked?) (live/page doc-path)))
 
 (defn- param
   "One query parameter (`?design=sober`), decoded; nil when absent."

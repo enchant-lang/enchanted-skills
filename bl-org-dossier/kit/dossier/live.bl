@@ -8,7 +8,8 @@
 ;;
 ;;   (live/open! [file ...])            at the host's top level, once
 ;;   (live/route conn file opts)        first in the handler; nil off its prefix
-;;   (page/page-h doc css js (live/page conn file opts))
+;;   (page/page-h doc css js (live/page file opts))  the same for every reader,
+;;                                      so the page may be cached
 ;;   (live/source file)                 the text the store holds
 ;;
 ;; opts: :prefix — the routes' absolute path, default "/_live"; a page served
@@ -71,8 +72,10 @@
      (((:handler (:api (state))) (:store (state)) (options p opts)) conn))))
 
 (defn page
-  "page-h's `live` argument for this reader, or nil when the file is not live."
-  ([conn path] (page conn path {}))
-  ([conn path opts]
+  "page-h's `live` argument, or nil when the file is not live. It names the
+   revision being rendered and the routes, never the reader: the client asks
+   the routes whether its reader edits, so hosts may cache the page."
+  ([path] (page path {}))
+  ([path opts]
    (when-let [p (live-file path)]
-     {:config ((:page-config (:api (state))) (:store (state)) p conn (options p opts))})))
+     {:config ((:page-config (:api (state))) (:store (state)) p (options p opts))})))

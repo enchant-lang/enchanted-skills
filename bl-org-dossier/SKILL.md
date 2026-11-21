@@ -57,7 +57,7 @@ House taste it descends from: `~/code/undefine/omega/spikes/mobile/design-review
    A project host that composes its own page (its own `serve.bl` around
    `dossier.page`) gets the same editing from `dossier.live`: `(live/open!
    [file])` at top level, `(live/route conn file)` first in its handler, and
-   `(live/page conn file)` as `page-h`'s fourth argument. A page served under
+   `(live/page file)` as `page-h`'s fourth argument. A page served under
    `/x/` passes `{:prefix "/x/_live"}`; a host that expands includes sets each
    node's `:src` to its own lines, or nil to keep the block closed.
 6. Read the answers:

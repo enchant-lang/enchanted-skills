@@ -1,0 +1,36 @@
+;; `#+include: FILE` lines, each replaced by the file (relative to a root), so
+;; the parts of a long document are written alone. Expansion remembers where
+;; every line came from: in-place editing opens only the main file's own lines
+;; and leaves blocks that come from a part closed.
+(ns dossier.include)
+
+(def directive (Regex/compile! "^#\\+include:\\s*(\\S+)\\s*$"))
+
+(defn- part [root line]
+  (when-let [m (Regex/run directive line)]
+    (let [f (str root "/" (nth m 1))]
+      (if (File/regular? f) (File/read! f) (str "# missing include " (nth m 1))))))
+
+(defn expand-with-origins
+  "{:text expanded :origins v}: (get v i) is the main file's line for expanded
+   line i (0-based), nil inside an included part."
+  [root text]
+  (let [rows (map-indexed (fn [i line] (if-let [p (part root line)] [p (repeat (count (String/split p "\n")) nil)] [line [i]]))
+                          (String/split text "\n"))]
+    {:text (join "\n" (map first rows)) :origins (vec (mapcat second rows))}))
+
+(defn expand [root text] (:text (expand-with-origins root text)))
+
+(defn own-lines
+  "Give every node of a doc read from expanded text the main file's range as
+   :src (what review/decorate writes as data-src), or nil when any of its lines
+   come from a part."
+  [origins doc]
+  (update doc :nodes
+    (fn [nodes]
+      (mapv (fn [nd]
+              (let [from (:line nd) to (:to nd) a (when (integer? from) (get origins from))]
+                (assoc nd :src (when (and a (integer? to) (< from to)
+                                          (every? (fn [k] (= (get origins k) (+ a (- k from)))) (range from to)))
+                                 (str a ":" (+ a (- to from)))))))
+            nodes))))

@@ -234,6 +234,8 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
       if (design) document.documentElement.dataset.design = design;
       else delete document.documentElement.dataset.design;
       show(current); paintGraphs(); window.dossierNotebook?.apply(); scrollTo(0, y);
+      // Hosts that enhance blocks at load re-enhance the new body here.
+      document.dispatchEvent(new CustomEvent('dossier:refreshed'));
     } catch (e) { stamp('offline · ' + e.message); }
   }
 

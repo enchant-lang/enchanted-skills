@@ -251,7 +251,10 @@
   ([doc css js] (page-h doc css js nil))
   ([doc css js live]
   (let [fr (= "fr" (get-in doc [:meta :language])) locked (get-in doc [:meta :locked])
-        live (when-not (or locked (get-in doc [:meta :published])) live)
+        ;; A locked page (a client's or audience's reading) never edits. A
+        ;; published one still edits for its owner: the host passes `live` only
+        ;; where editing belongs, and the routes recheck the editor.
+        live (when-not locked live)
         css (str css "\n" (design/css doc))]
   [:html {:lang (or (get-in doc [:meta :language]) "en") :data-design (get-in doc [:meta :design])
           :data-published (when (get-in doc [:meta :published]) "true")
