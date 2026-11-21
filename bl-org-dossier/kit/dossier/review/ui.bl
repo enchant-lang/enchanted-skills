@@ -1,13 +1,23 @@
 ; The same review controls decorate every dossier renderer.
 (ns dossier.review.ui (:require [dossier.ui :as ui]))
 
+(defn- source-lines
+  "The node's source lines as `from:to` (end exclusive) for in-place editing."
+  [node]
+  (when (and (integer? (:line node)) (integer? (:to node)) (< (:line node) (:to node)))
+    (str (:line node) ":" (:to node))))
+
 (defn decorate [node tree]
-  (if (or (nil? tree) (= :props (:t node)) (nil? (:review-target node))) tree
+  (if (or (nil? tree) (= :props (:t node))) tree
     (let [tag (first tree)]
       (if-not (and (vector? tree) (or (keyword? tag) (string? tag))) tree
-        (let [has-attrs (map? (second tree)) attrs (if has-attrs (second tree) {})]
-          (into [tag (assoc attrs :data-review-target (:review-target node) :data-review-label (:review-label node) :data-review-ambiguous (when (:review-ambiguous node) "true"))]
-                (if has-attrs (drop 2 tree) (rest tree))))))))
+        (let [has-attrs (map? (second tree)) attrs (if has-attrs (second tree) {})
+              attrs (cond-> attrs
+                      (:review-target node)
+                      (assoc :data-review-target (:review-target node) :data-review-label (:review-label node)
+                             :data-review-ambiguous (when (:review-ambiguous node) "true"))
+                      (source-lines node) (assoc :data-src (source-lines node)))]
+          (into [tag attrs] (if has-attrs (drop 2 tree) (rest tree))))))))
 
 (defn shell [lang]
   (let [fr (= "fr" lang)]

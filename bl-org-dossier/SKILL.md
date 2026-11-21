@@ -40,8 +40,20 @@ House taste it descends from: `~/code/undefine/omega/spikes/mobile/design-review
    identity may answer (Serve sets `Tailscale-User-Login`; verified 2026-10-31).
    `DOSSIER_HANDLE=timinou` is the name answers carry in `:by`; a login (an
    email) is never written into the file.
-   The server re-reads the file per request: editing the `.bl.org` needs no restart.
-   Editing the kit's `.bl` code does: `work restart NAME`.
+   The file stays the source of truth, owned by one watched Omega shared buffer
+   (`omega.live-doc`, pinned in `kit/env.bl`). Edit it however you like: an
+   Emacs save, `bl doc run`, or your own edit appears on every open page within a
+   second, without reload and without a restart. Editing the kit's `.bl` code, or
+   re-pinning Omega, needs `work restart NAME`.
+
+   **The owner edits the page in place.** Press `E` (or the *Edit* button in the
+   live bar), then click or tap any passage: it opens where it stands as its exact
+   Org source, in the same type, saves as you pause, and closes back into its
+   rendering with `Esc`, *Done*, or a click elsewhere. `↑`/`↓` at the first/last
+   line walk to the neighbouring block. Semantic blocks open as their source. A
+   passage changed elsewhere meanwhile is never overwritten: the page offers
+   *Use theirs* or *Keep mine*. Without `DOSSIER_OWNER` the page only reads.
+   After someone edited, re-read the file before acting on it.
 6. Read the answers:
    ```sh
    bl run ~/.claude/skills/bl-org-dossier/kit/answers.bl -- /abs/path/NAME.bl.org

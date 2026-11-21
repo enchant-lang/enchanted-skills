@@ -1,0 +1,36 @@
+(ns live-edit-test
+  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.storage :as storage] [live.hiccup :as h]))
+
+(def text "#+title: T\n\n* One\n\nPara one\nwraps.\n\n- a\n- b\n\n#+begin_ask :id q1 :title \"Why?\"\nBecause.\n#+end_ask\n")
+
+(defn- html [tree] (apply str (map h/hiccup->html (if (seq? tree) tree [tree]))))
+
+(deftest rendered-blocks-name-their-exact-source-lines
+  (let [out (html (pg/doc-h (o/read-doc text)))]
+    (is (includes? out "data-src=\"2:3\"") "heading")
+    (is (includes? out "data-src=\"4:6\"") "paragraph over two lines")
+    (is (includes? out "data-src=\"7:9\"") "list")
+    (is (includes? out "data-src=\"10:13\"") "semantic block, begin to end")))
+
+(deftest the-page-loads-its-in-place-editor-only-when-a-host-offers-it
+  (let [doc (o/read-doc text)
+        live (h/hiccup->html (pg/page-h doc "" "" {:config "{\"rev\":\"0\",\"editable\":true}"}))
+        plain (h/hiccup->html (pg/page-h doc "" ""))
+        locked (h/hiccup->html (pg/page-h (assoc-in doc [:meta :locked] true) "" "" {:config "{}"}))]
+    (is (includes? live "data-live-doc="))
+    (is (includes? live "_live/client.js"))
+    (is (includes? live "_live/client.css"))
+    (is (not (includes? plain "_live/")))
+    (is (not (includes? locked "_live/")) "a client reading never edits")))
+
+(deftest storage-writes-through-an-installed-host-writer
+  (let [path (str "/tmp/dossier-writer-" (erlang/unique_integer (list :positive)) ".bl.org")
+        seen (atom [])]
+    (File/write! path "a\n")
+    (try
+      (storage/install-writer! (fn [p transform]
+                                 (if (= p path) (do (swap! seen conj p) (:value (transform "hosted\n"))) :pass)))
+      (is (= :hosted (storage/update! path (fn [t] {:text (str t "x") :value :hosted}))))
+      (is (= [path] @seen))
+      (is (= "a\n" (File/read! path)) "the host owns the write")
+      (finally (storage/install-writer! nil) (File/rm! path)))))

@@ -246,9 +246,12 @@
                 (when dock [:div.nb-dock (nb/bar-h dock)])))]])))
 
 (defn page-h
-  "The full HTML document."
-  [doc css js]
+  "The full HTML document. `live`, when given by a host that edits the file in
+   place, is {:config json}: the page then loads its editor from `_live/`."
+  ([doc css js] (page-h doc css js nil))
+  ([doc css js live]
   (let [fr (= "fr" (get-in doc [:meta :language])) locked (get-in doc [:meta :locked])
+        live (when-not (or locked (get-in doc [:meta :published])) live)
         css (str css "\n" (design/css doc))]
   [:html {:lang (or (get-in doc [:meta :language]) "en") :data-design (get-in doc [:meta :design])
           :data-published (when (get-in doc [:meta :published]) "true")
@@ -262,8 +265,9 @@
     (for [href (design/font-links doc)] [:link {:rel "stylesheet" :href href}])
     [:title (String/replace (or (:title (:meta doc)) "Dossier") (Regex/compile! "\\s+—.*$") "")]
     (when-not locked [:link {:rel "stylesheet" :href "review.css"}])
-    [:style css]]
-   [:body
+    [:style css]
+    (when live [:link {:rel "stylesheet" :href "_live/client.css"}])]
+   [:body (when live {:data-live-doc (:config live)})
     (if locked
       [:div.live [:i] [:span#stamp (if (get-in doc [:meta :published]) (if fr "Copie partagée" "Shared copy") (ui/tr "live"))]
        (when (get-in doc [:meta :published]) [:a {:href "../../"} (if fr "Dernière version" "Latest version")])
@@ -283,4 +287,5 @@
     [:div#toast]
     (when-not locked (review/shell (get-in doc [:meta :language])))
     [:script js]
-    (when-not locked [:script {:src "review.js" :defer true}])]]))
+    (when live [:script {:src "_live/client.js" :defer true}])
+    (when-not locked [:script {:src "review.js" :defer true}])]])))

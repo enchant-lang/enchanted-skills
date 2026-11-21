@@ -9,8 +9,9 @@
     (let []
       (-> html
         (String/replace "</head>" (str "<link rel=\"stylesheet\" href=\"publication.css\"></head>"))
-        (String/replace "<body><div class=\"live\">"
-          "<body><div class=\"live\"><button id=\"publication-open\" type=\"button\">Partager</button>")
+        ;; The body may carry attributes (a live-doc host's data-live-doc).
+        (String/replace (Regex/compile! "(<body[^>]*>)<div class=\"live\">")
+          "\\1<div class=\"live\"><button id=\"publication-open\" type=\"button\">Partager</button>")
         (String/replace "</body>" (str
           "<section id=\"dossier-publication\" data-csrf=\"" csrf "\">"
           "<div id=\"publication-sheet\" hidden><header><strong>Partager ce dossier</strong><button id=\"publication-close\" type=\"button\" aria-label=\"Fermer\">×</button></header>"

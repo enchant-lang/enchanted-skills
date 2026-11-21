@@ -1,7 +1,7 @@
 ; Trusted host enrichment for an Org roster; browser input names declared IDs only.
 (ns dossier.roster
  (:require [dossier.org :as org] [dossier.roster.model :as model]
-           [dossier.roster.view :as view] [dossier.witness :as witness] [bl.json :as json]))
+           [dossier.roster.view :as view] [dossier.witness :as witness] [dossier.storage :as storage] [bl.json :as json]))
 
 (defn- real [path]
  (let [r (System/cmd "realpath" (list "-e" path))] (when (= 0 (elem r 1)) (trim (elem r 0)))))
@@ -76,20 +76,22 @@
                   (contains? #{"Comment" "Looks right" "Needs changes"} decision))
     (throw (ex-info "Invalid review fields" {})))
    (let [ctx (context doc directory id options) path (:file ctx)]
-    (global/trans (tuple (tuple :dossier/roster-note path) (erlang/self))
-     (fn []
-      (let [text (File/read! path)
-            current (first (filter (fn [x] (= task (:id x))) (:items (model/parse text))))
-            actual (when current (String/downcase (Base/encode16 (crypto/hash :sha256 (:raw current)))))
-            _ (when (and version (not= version actual)) (throw (ex-info "This task changed. Reload its saved record before saving your draft again." {:status 409})))
-            stamp (subs (String/replace (str (DateTime/utc_now)) (Regex/compile! "^~U\\[") "") 0 19)
-            changed (model/note-text text task note decision stamp by)
-            temporary (str path ".roster-tmp")]
-       (File/write! temporary changed) (File/rename! temporary path)
-       {:status 200 :body {:ok true :task task :note note :decision decision :at stamp
-                          :version (String/downcase (Base/encode16 (crypto/hash :sha256
-                            (:raw (first (filter (fn [x] (= task (:id x))) (:items (model/parse changed))))))))
-                          :rev (str (erlang/phash2 changed))}})))))
+    ;; The same guarded writer as answers and comments: one revision stream,
+    ;; fsync'd replacement, and a retry from fresh source on a concurrent write.
+    (let [result (storage/update! path
+                   (fn [text]
+                     (let [current (first (filter (fn [x] (= task (:id x))) (:items (model/parse text))))
+                           actual (when current (String/downcase (Base/encode16 (crypto/hash :sha256 (:raw current)))))]
+                       (if (and version (not= version actual))
+                         {:error "This task changed. Reload its saved record before saving your draft again." :status 409}
+                         (let [stamp (subs (String/replace (str (DateTime/utc_now)) (Regex/compile! "^~U\\[") "") 0 19)
+                               changed (model/note-text text task note decision stamp by)]
+                           {:text changed
+                            :value {:status 200 :body {:ok true :task task :note note :decision decision :at stamp
+                                    :version (String/downcase (Base/encode16 (crypto/hash :sha256
+                                      (:raw (first (filter (fn [x] (= task (:id x))) (:items (model/parse changed))))))))
+                                    :rev (str (erlang/phash2 changed))}}})))))]
+      (if (:error result) {:status (or (:status result) 409) :body {:error (:error result)}} result))))
   (catch error {:status (or (:status (ex-data error)) 400) :body {:error (ex-message error)}})))
 
 (defn roster-h [node] (view/roster-h node))

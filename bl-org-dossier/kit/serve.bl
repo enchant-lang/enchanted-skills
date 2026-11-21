@@ -12,13 +12,16 @@
 ; Routes: GET /        the page        GET /doc   {rev html} for live refresh
 ;         GET /rev     {rev}           GET /src   the .bl.org itself
 ;         GET /answers every answer    POST /answer {id answer note}
+;         /_live/*     in-place editing (omega.live-doc.host): the owner opens
+;                      any rendered block as its Org source; every reader's page
+;                      follows the file through one long-poll, external writes too.
 
 (ns serve
   (:require [web] [live.hiccup :as h] [bl.json :as json]
             [dossier.org :as o] [dossier.page :as pg] [dossier.answer :as ans] [dossier.film :as film]
             [dossier.feedback :as feedback] [dossier.witness :as witness] [dossier.review.http :as review] [dossier.notebook :as nb] [dossier.audience :as audience]
             [dossier.share.host :as sharing] [dossier.share.assets :as publication-assets]
-            [dossier.design :as design] [dossier.presentation :as presentation]))
+            [dossier.design :as design] [dossier.presentation :as presentation] [dossier.storage :as storage]))
 
 (defn- arg-path []
   (let [a (first (BeamLisp/argv))]
@@ -26,6 +29,32 @@
     (Path/expand a)))
 
 (def doc-path (arg-path))
+
+;; Omega's live editing (omega.live-doc): one watched shared buffer owns the
+;; file, so answers, comments, roster notes and in-place edits write through it,
+;; and external writes (Emacs, an agent) are pushed to every open page. This
+;; kit's env.bl puts Omega on the path; a host launched from elsewhere finds it
+;; at DOSSIER_OMEGA_SRC or ~/projects/omega/src. Without Omega the page still
+;; serves, reading the file per request and polling as before.
+(def live-api
+  (try
+    (let [src (or (System/get_env "DOSSIER_OMEGA_SRC") (Path/expand "~/projects/omega/src"))]
+      (when (and (nil? (try (BeamLisp.Loader/source_path "omega.live-doc.host") (catch _ nil))) (File/dir? src))
+        (BeamLisp.Env/add_search_path src))
+      (BeamLisp.Loader/ensure_loaded "omega.live-doc.store")
+      (BeamLisp.Loader/ensure_loaded "omega.live-doc.host")
+      (into {} (for [[k ns n] [[:open! "omega.live-doc.store" "open!"] [:current "omega.live-doc.store" "current"]
+                               [:update! "omega.live-doc.store" "update!"] [:handler "omega.live-doc.host" "handler"]
+                               [:owner-editor "omega.live-doc.host" "owner-editor"] [:page-config "omega.live-doc.host" "page-config"]]]
+                 [k (BeamLisp.Env/fetch! ns n)])))
+    (catch error
+      (println (str "dossier: live editing unavailable (" (ex-message error) "); serving read-only refresh"))
+      nil)))
+(def store (when live-api ((:open! live-api) {})))
+(when store
+  (storage/install-writer!
+    (fn [path transform] (if (= path doc-path) ((:update! live-api) store path transform "dossier") :pass))))
+(defn- source [] (if store (:text ((:current live-api) store doc-path)) (File/read! doc-path)))
 
 (defn- context-dir []
   (or (System/get_env "DOSSIER_CONTEXT_DIR")
@@ -56,6 +85,16 @@
   (let [owner (System/get_env "DOSSIER_OWNER")]
     (or (blank? owner) (= owner (web/req-header conn "tailscale-user-login")))))
 
+;; Editing the source needs the configured owner; without one the page reads only.
+(def live-options
+  (when store
+    {:file doc-path :editor? ((:owner-editor live-api) (System/get_env "DOSSIER_OWNER"))
+     :client (fn [conn] (or (ans/handle (web/req-header conn "tailscale-user-login") (System/get_env "DOSSIER_HANDLE")) "owner"))}))
+(def live-route (if store ((:handler live-api) store live-options) (fn [_] nil)))
+(defn- live-page [conn]
+  (when (and store (not (audience/locked?)))
+    {:config ((:page-config live-api) store doc-path conn live-options)}))
+
 (defn- param
   "One query parameter (`?design=sober`), decoded; nil when absent."
   [conn k]
@@ -82,7 +121,7 @@
 
 (defn- full-page [conn text]
   (sharing/decorate
-    (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js"))))
+    (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js") (live-page conn))))
     conn (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
 
 (defn- publication-options [conn text]
@@ -123,7 +162,7 @@
 
 (defn- design-route [conn]
   (when (and (= "get" (web/method conn)) (= "/design.css" (web/path conn)))
-    (let [doc (o/read-doc (File/read! doc-path))
+    (let [doc (o/read-doc (source))
           lang (get design/languages (get-in doc [:meta :design]))]
       (if lang
         (web/bytes (web/resp-header conn "cache-control" "no-store") "text/css" (str (:css lang)))
@@ -131,6 +170,7 @@
 
 (defn router [conn]
  (or (client-only conn)
+     (when-not (audience/locked?) (live-route conn))
      (explorer-route conn)
      (design-route conn)
      (when-not (audience/locked?) (sharing/route conn doc-path (fn [text] (publication-options conn text))
@@ -140,16 +180,16 @@
      (font-route conn)
  (let [match (Regex/run (Regex/compile! "^/witness-media/([A-Za-z0-9_-]+)/(frame-[1-9][0-9]*\\.png)$") (web/path conn))]
   (if match
-   (if-let [path (witness/media-path (o/read-doc (File/read! doc-path)) (Path/dirname doc-path) (nth match 1) (nth match 2))]
+   (if-let [path (witness/media-path (o/read-doc (source)) (Path/dirname doc-path) (nth match 1) (nth match 2))]
     (web/bytes (web/resp-header conn "cache-control" "private, no-store") "image/png" (File/read! path))
     (web/text conn 404 "Recorded frame unavailable"))
    (web/route conn
-    [:get "/"] (web/html conn (full-page conn (File/read! doc-path)))
-    [:get "/doc"] (web/json conn (doc-json conn (File/read! doc-path)))
-    [:get "/rev"] (web/json conn {:rev (rev (File/read! doc-path))})
-    [:get "/src"] (web/text conn (File/read! doc-path))
+    [:get "/"] (web/html conn (full-page conn (source)))
+    [:get "/doc"] (web/json conn (doc-json conn (source)))
+    [:get "/rev"] (web/json conn {:rev (rev (source))})
+    [:get "/src"] (web/text conn (source))
     [:get "/answers"] (web/json conn (vec (map (fn [i] (into {} (for [[k v] i :when v] [(name k) v])))
-                                               (pg/feedback-items (o/read-doc (File/read! doc-path))))))
+                                               (pg/feedback-items (o/read-doc (source))))))
     [:post "/answer"] (post-answer conn)
     :else (web/text conn 404 "not found"))))))
 
@@ -157,7 +197,7 @@
 
 ;; Pay one full render before the first reader: loading a namespace after
 ;; web/serve has pinned this file is what beam-lisp refuses (code_leased).
-(pg/page-h (read-doc (File/read! doc-path)) "" "")
+(pg/page-h (read-doc (source)) "" "" {:config "{}"})
 
 (web/serve {:port port :ip (tuple 127 0 0 1) :plug router :log :off})
 (println (str "dossier: " doc-path " on http://127.0.0.1:" port "/"))

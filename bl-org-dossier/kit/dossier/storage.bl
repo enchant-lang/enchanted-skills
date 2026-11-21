@@ -1,9 +1,23 @@
 ; One shared CAS writer for answers and comments, including across server VMs.
 (ns dossier.storage (:require [bl.json :as json]))
 
+(defn install-writer!
+  "Route writes through a host-owned live store, e.g. Omega's watched shared
+   buffer, so answers, comments and in-place edits share one revision stream.
+   `writer` is (fn [path transform] result-or-:pass); :pass falls back here."
+  [writer] (persistent_term/put :dossier/writer writer))
+
+(declare file-update!)
 (defn update!
   "transform sees the latest source and returns {:text :value} or {:error}.
    A simultaneous write is retried from fresh source; errors preserve drafts."
+  [path transform]
+  (let [writer (persistent_term/get :dossier/writer nil)
+        result (if writer (writer (Path/expand path) transform) :pass)]
+    (if (= :pass result) (file-update! path transform) result)))
+
+(defn file-update!
+  "The file-level CAS writer: one lock across VMs, compare, fsync and rename."
   [path transform]
   (global/trans (tuple (tuple :dossier/feedback (Path/expand path)) (erlang/self))
     (fn []
