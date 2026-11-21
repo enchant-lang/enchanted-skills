@@ -12,3 +12,26 @@
 @media(max-width:700px){#dossier-review>.review-compose textarea{height:78px;min-height:60px;max-height:120px}.live:has(#review-toggle){gap:6px;padding:7px 10px;font-size:11px}.live:has(#review-toggle) #stamp{max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live:has(#review-toggle) a{max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live:has(#review-toggle) button{padding:2px 5px}.live:has(#review-toggle) i{flex-shrink:0}}
 .review-pin-layer{position:fixed;inset:0;z-index:80;pointer-events:none}.review-pin{position:absolute;width:23px;height:23px;padding:0;border:2px solid var(--paper,#fffdf9);border-radius:50%;background:var(--clay,#a45f3d);color:var(--paper,#fffdf9);box-shadow:0 2px 6px #0003;font:600 11px/19px system-ui;text-align:center;cursor:pointer;pointer-events:auto}.review-pin:focus-visible{outline:2px solid var(--ink,#252525);outline-offset:2px}
 .review-pin{background:var(--ink,#252525);color:var(--paper,#fffdf9)}
+/* ── Git overlay ── */
+#fn-changes-toggle[aria-expanded="true"] { background: var(--u-yellow, #ffd83d); color: #171c1d; }
+.fn-chg-panel { position: fixed; z-index: 60; top: 44px; right: 12px; bottom: 12px; width: min(380px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--u-card, var(--card, #fffdf6)); color: var(--u-ink, var(--ink, #171c1d)); border: 2px solid var(--u-ink, var(--ink, #171c1d)); box-shadow: 6px 6px 0 color-mix(in srgb, var(--u-ink, var(--ink, #171c1d)) 25%, transparent); font-size: 13px; }
+.fn-chg-panel[hidden] { display: none; }
+.fn-chg-panel header { display: flex; justify-content: space-between; align-items: center; }
+.fn-chg-panel header strong { font: 800 20px/1 var(--font-display, inherit); text-transform: uppercase; }
+.fn-chg-panel header button { all: unset; cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px; }
+.fn-chg-panel label { display: grid; gap: 3px; font: bold 10.5px var(--mono, ui-monospace, monospace); text-transform: uppercase; }
+.fn-chg-panel select { font: 12px var(--mono, ui-monospace, monospace); padding: 4px; border: 1.5px solid var(--u-ink, var(--ink, #171c1d)); background: var(--u-bg, var(--bg, #fff)); color: var(--u-ink, var(--ink, #171c1d)); text-transform: none; width: 100%; min-width: 0; }
+.fn-chg-sum { margin: 0; font: 11px var(--mono, ui-monospace, monospace); }
+.fn-chg-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; border-top: 1px solid var(--u-line, var(--line, #c9c4b8)); }
+.fn-chg-list button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 2px; width: 100%; padding: 6px 4px 6px 8px; border-bottom: 1px solid var(--u-line, var(--line, #c9c4b8)); border-left: 3px solid #3f8a4f; }
+.fn-chg-list button:hover, .fn-chg-list button:focus-visible { background: var(--u-inset, var(--inset, #ece8dc)); }
+.fn-chg-list small { font: 10px var(--mono, ui-monospace, monospace); opacity: .7; }
+.fn-chg-removed { max-height: 30%; overflow: auto; border-top: 1px solid var(--u-line, var(--line, #c9c4b8)); padding-top: 6px; }
+.fn-chg-removed summary { cursor: pointer; font: bold 11px var(--mono, ui-monospace, monospace); }
+.fn-chg-removed li { text-decoration: line-through; text-decoration-color: #a2643f; opacity: .8; margin: 4px 0; }
+mark.fn-chg-w { background: color-mix(in srgb, #3f8a4f 28%, transparent); color: inherit; box-shadow: 0 2px 0 #3f8a4f; padding: 0 1px; }
+.fn-chg { background-color: color-mix(in srgb, #3f8a4f 14%, transparent) !important; box-shadow: inset 3px 0 0 #3f8a4f; }
+text.fn-chg, tspan.fn-chg { fill: #2d6b3a !important; font-weight: 800; }
+.fn-chg-flash { animation: fn-chg-flash 1.2s; }
+@keyframes fn-chg-flash { 0%, 40% { outline: 3px solid #a2643f; outline-offset: 2px; } 100% { outline: 3px solid transparent; } }
+@media (min-width: 1000px) { html[data-changes] main#doc { margin-right: 392px; } }

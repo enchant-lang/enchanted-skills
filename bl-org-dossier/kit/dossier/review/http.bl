@@ -1,6 +1,6 @@
 ; Shared review routing. Hosts delegate before their application routes.
 (ns dossier.review.http
-  (:require [web] [bl.json :as json] [dossier.org :as org] [dossier.review.store :as store] [dossier.review.model :as model] [dossier.review.ui :as ui] [live.hiccup :as h]))
+  (:require [web] [bl.json :as json] [dossier.org :as org] [dossier.review.store :as store] [dossier.review.model :as model] [dossier.review.ui :as ui] [dossier.review.changes :as changes] [live.hiccup :as h]))
 
 (defn identity
   "Authenticated Tailscale login -> a display handle, never a login in source."
@@ -25,6 +25,16 @@
   "Returns a response for /review, otherwise nil. Review grants cannot answer
    approval questions. The host retains its existing document read policy."
   [conn path]
+  (cond
+   ;; Git overlay: the file's recent commits, or what changed since one of them.
+   (= "/changes" (web/path conn))
+   (when (= "get" (web/method conn))
+     (let [ref (get (URI/decode_query (or (web/query conn) "")) "ref")
+           conn (web/resp-header conn "cache-control" "private, no-store")]
+       (if (blank? ref)
+         (web/json conn {:ok true :refs (changes/refs path)})
+         (if-let [d (changes/since path ref)] (web/json conn (assoc d :ok true)) (web/json conn 404 {:error "Unknown commit for this file."})))))
+   :else
   (if (contains? #{"/review.js" "/review.css"} (web/path conn))
     (when (= "get" (web/method conn))
       (web/bytes (web/resp-header conn "cache-control" "no-cache")
@@ -45,7 +55,7 @@
                       (if (:error result) (web/json conn (or (:status result) 400) {:error (:error result)})
                         (web/json conn (state (File/read! path) who)))))))))
           :else (web/json conn 405 {:error "Use GET or POST."}))
-        (catch _ (web/json conn 500 {:error "The discussion could not be saved or loaded. Your draft is kept."})))))))
+        (catch _ (web/json conn 500 {:error "The discussion could not be saved or loaded. Your draft is kept."}))))))))
 
 (defn decorate-page
   "Give standalone same-origin mockups the same review layer as their dossier."

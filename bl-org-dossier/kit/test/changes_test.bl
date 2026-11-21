@@ -1,0 +1,24 @@
+; test/changes_test.bl — the git overlay reports what a reader would see as new.
+;
+;   bl test -p ~/.claude/skills/bl-org-dossier/kit test/changes_test.bl
+
+(ns dossier.review.changes.test
+  (:require [dossier.review.changes :as ch]))
+
+(def old-text
+  "#+title: T\n* Contexte\n\nLe site envoie les fiches chaque jour.\n\n#+begin_comment\n- Review :: x\n\nUn commentaire.\n#+end_comment\n#+begin_graph\nnode a | Ancien titre | Sous-titre | 0,0 | you\n#+end_graph\n- *Gagner du temps.* Une phrase qui partira bientôt du document.\n")
+(def new-text
+  "#+title: T\n* Contexte\n\nLe site envoie les fiches validées chaque jour à 13 h.\n\n#+begin_comment\n- Review :: y\n\nUn autre commentaire.\n#+end_comment\n#+begin_graph\nnode a | Nouveau bloc entier | Sous-titre | 0,0 | you\n#+end_graph\n** Pourquoi ce travail\n")
+
+(deftest plain-strips-markup
+  (is (= "Gagner du temps. Voir le rapport" (ch/plain "- *Gagner du temps.* Voir [[/final/rapport][le rapport]]")))
+  (is (= ["Ancien titre" "Sous-titre" "0,0" "you"] (vec (ch/cells "node a | Ancien titre | Sous-titre | 0,0 | you")))))
+
+(deftest diff-reports-reader-text
+  (let [d (ch/diff old-text new-text) added (set (map :text (:added d)))]
+    (is (contains? added "validées"))
+    (is (contains? added "à 13 h"))
+    (is (contains? added "Nouveau bloc entier"))
+    (is (contains? added "Pourquoi ce travail"))
+    (is (not (some (fn [t] (includes? t "commentaire")) added)) "comments never count as changes")
+    (is (= ["Gagner du temps. Une phrase qui partira bientôt du document."] (:removed d)))))

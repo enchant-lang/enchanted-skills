@@ -128,3 +128,118 @@
  addEventListener('beforeunload',capture);bind(document);decorate();load();setInterval(()=>{if(document.visibilityState!=='hidden')load()},3000);
  const linked=location.hash.match(/^#review-([A-Za-z0-9_-]+)$/);if(linked){const wait=setInterval(()=>{if(!data)return;clearInterval(wait);const note=data.comments.find(n=>n.id===linked[1]);if(note){active={target:note.target,label:targetElement(note.target)?.dataset.reviewLabel||document.title,view:note.view};focusThread=note.id;filter='all';$('[data-review-filter]').value='all';render();open(false);goTo(note);requestAnimationFrame(()=>document.getElementById('review-'+note.id)?.scrollIntoView({block:'center'}))}},100);setTimeout(()=>clearInterval(wait),15000)}
 })();
+// ── Git overlay: highlight what changed in this dossier since a chosen commit ──
+(() => {
+  const doc = location.pathname;
+  const bar = document.querySelector('.live');
+  const main = document.querySelector('main#doc');
+  if (!bar || !main || !document.getElementById('review-toggle')) return;
+  const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+  const button = Object.assign(document.createElement('button'), { type: 'button', id: 'fn-changes-toggle', textContent: 'Changements' });
+  button.setAttribute('aria-expanded', 'false');
+  bar.insertBefore(button, bar.querySelector('#theme') || document.getElementById('review-toggle'));
+  const panel = document.createElement('aside');
+  panel.className = 'fn-chg-panel';
+  panel.hidden = true;
+  panel.innerHTML = `<header><strong>Changements</strong><button type="button" data-chg-close aria-label="Fermer">×</button></header>
+    <label>Depuis <select data-chg-ref></select></label><p class="fn-chg-sum" data-chg-sum>…</p>
+    <ol class="fn-chg-list" data-chg-list></ol><details class="fn-chg-removed" data-chg-removed hidden><summary></summary><ul></ul></details>`;
+  document.body.append(panel);
+  const norm = s => s.normalize('NFC').replace(/\s+/g, ' ').trim();
+  const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  let refs = null, marks = [];
+
+  function clear() {
+    for (const m of main.querySelectorAll('mark.fn-chg-w')) m.replaceWith(...m.childNodes);
+    for (const el of main.querySelectorAll('.fn-chg')) el.classList.remove('fn-chg', 'fn-chg-flash');
+    main.normalize();
+    marks = [];
+  }
+  function candidates() {
+    const sel = 'h1,h2,h3,h4,p,li,td,th,dt,dd,figcaption,small,strong,button,summary,text,tspan,span';
+    return [...main.querySelectorAll(sel)]
+      .filter(el => !el.closest('nav, .side, .toc, .review-thread, .comment, [data-review], #dossier-review'))
+      .map(el => ({ el, text: norm(el.textContent) }))
+      .filter(c => c.text.length >= 3);
+  }
+  function smallest(cands, needle) {
+    let best = null;
+    for (const c of cands) if (c.text.includes(needle) && (!best || c.text.length < best.text.length)) best = c;
+    return best;
+  }
+  function wrap(el, run) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const i = n.data.normalize('NFC').indexOf(run);
+      if (i < 0 || n.parentElement.closest('svg')) continue;
+      const r = document.createRange();
+      r.setStart(n, i); r.setEnd(n, i + run.length);
+      const m = document.createElement('mark');
+      m.className = 'fn-chg-w';
+      r.surroundContents(m);
+      return m;
+    }
+    return null;
+  }
+  function apply(data) {
+    clear();
+    const cands = candidates();
+    const list = panel.querySelector('[data-chg-list]');
+    list.innerHTML = '';
+    let missing = 0;
+    for (const a of data.added) {
+      const text = norm(a.text);
+      const host = smallest(cands, text) || (a.in && smallest(cands, norm(a.in)));
+      if (!host) { missing++; continue; }
+      const target = (!a.whole && wrap(host.el, text)) || host.el;
+      if (target === host.el) host.el.classList.add('fn-chg');
+      marks.push(target);
+      const li = document.createElement('li');
+      const section = host.el.closest('section')?.querySelector('h2,h3')?.textContent?.trim();
+      li.innerHTML = `<button type="button"><small></small><span></span></button>`;
+      li.querySelector('small').textContent = section || '';
+      li.querySelector('span').textContent = text.length > 140 ? text.slice(0, 140) + '…' : text;
+      li.querySelector('button').addEventListener('click', () => {
+        const el = target.closest('[hidden]') ? null : target;
+        (el || host.el).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.remove('fn-chg-flash'); void target.offsetWidth; target.classList.add('fn-chg-flash');
+      });
+      list.append(li);
+    }
+    const removed = panel.querySelector('[data-chg-removed]');
+    removed.hidden = !data.removed.length;
+    removed.querySelector('summary').textContent = `${data.removed.length} passage${data.removed.length > 1 ? 's' : ''} retiré${data.removed.length > 1 ? 's' : ''}`;
+    removed.querySelector('ul').innerHTML = '';
+    for (const r of data.removed) { const li = document.createElement('li'); li.textContent = r; removed.querySelector('ul').append(li); }
+    panel.querySelector('[data-chg-sum]').textContent =
+      `${marks.length} ajout${marks.length > 1 ? 's' : ''} ou modification${marks.length > 1 ? 's' : ''} surlignés` + (missing ? ` · ${missing} non localisés (widgets fermés ou graphes)` : '');
+  }
+  async function load(ref) {
+    panel.querySelector('[data-chg-sum]').textContent = 'Calcul…';
+    store.set(`fn-chg-ref-${doc}`, ref);
+    const r = await fetch(`changes?ref=${encodeURIComponent(ref)}`, { cache: 'no-store' });
+    if (r.ok) apply(await r.json()); else panel.querySelector('[data-chg-sum]').textContent = 'Référence introuvable.';
+  }
+  async function open() {
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    document.documentElement.dataset.changes = '';
+    if (!refs) {
+      refs = (await (await fetch('changes', { cache: 'no-store' })).json()).refs || [];
+      const select = panel.querySelector('[data-chg-ref]');
+      for (const r of refs) select.append(new Option(`${r.review ? '★ ' + r.short + ' relecture' : r.short} · ${fmt(r.date)} — ${r.subject.slice(0, 60)}`, r.ref));
+      const saved = store.get(`fn-chg-ref-${doc}`);
+      select.value = refs.some(r => r.ref === saved) ? saved : (refs.find(r => r.review) || refs[1] || refs[0])?.ref;
+    }
+    load(panel.querySelector('[data-chg-ref]').value);
+  }
+  function close() {
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    delete document.documentElement.dataset.changes;
+    clear();
+  }
+  button.addEventListener('click', () => (panel.hidden ? open() : close()));
+  panel.querySelector('[data-chg-close]').addEventListener('click', close);
+  panel.querySelector('[data-chg-ref]').addEventListener('change', e => load(e.target.value));
+})();

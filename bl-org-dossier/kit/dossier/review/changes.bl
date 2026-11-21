@@ -1,0 +1,117 @@
+; What changed in a dossier since one of its commits, for the page's git overlay.
+;
+;   GET changes            -> {:refs [{:ref :short :date :subject :review}]}   the last commits of the file
+;   GET changes?ref=SHA    -> {:ref :added [{:text :whole :in}] :removed [text]}
+;
+; Comment blocks and block fences are ignored and Org markup is stripped, so the
+; fragments are the text the reader sees. Rows of a block (`a | b | c`) are compared
+; cell by cell: a new cell is either new as a whole, or close to an old one, in
+; which case only its inserted words are kept.
+(ns dossier.review.changes
+  (:require [bl.json :as json]))
+
+(def max-refs 8)
+
+(defn- git [dir args]
+  (let [[out code] (System/cmd "git" (apply list (concat ["-C" dir] args)) (list (tuple :stderr_to_stdout false)))]
+    (when (= 0 code) out)))
+
+(defn- visible-lines
+  "Source lines without comment blocks and without #+ lines."
+  [text]
+  (loop [ls (String/split text "\n") skip false out []]
+    (if (empty? ls) out
+      (let [l (first ls)
+            opening (starts-with? l "#+begin_comment")
+            skip' (or skip opening)
+            out' (if (or skip' (starts-with? l "#+")) out (conj out l))]
+        (recur (rest ls) (if (starts-with? l "#+end_comment") false skip') out')))))
+
+(def ^:private link-re (Regex/compile! "\\[\\[(?:[^\\]]*\\]\\[)?([^\\]]*)\\]\\]"))
+(def ^:private heading-re (Regex/compile! "^\\*+\\s+"))
+(def ^:private item-re (Regex/compile! "^\\s*(?:-|\\d+\\.)\\s+(?:\\[[ X]\\]\\s+)?"))
+(def ^:private verb-re (Regex/compile! "^(?:node|edge|use|person|step|stage|concept|cell|lane|doc|at|view)\\s+\\S+(?:\\s*->\\s*\\S+)?\\s*$"))
+(def ^:private emph-re (Regex/compile! "(?<![\\w*])[*~=/](\\S(?:.*?\\S)?)[*~=/](?![\\w*])"))
+(def ^:private space-re (Regex/compile! "\\s+"))
+
+(defn plain [s]
+  (-> s
+      (String/replace link-re "\\1")
+      (String/replace heading-re "")
+      (String/replace item-re "")
+      (String/replace emph-re "\\1")
+      (String/replace space-re " ")
+      trim))
+
+(defn cells
+  "The readable pieces of a source line: its cells when it is a row."
+  [line]
+  (->> (String/split line "|")
+       (map plain)
+       (remove (fn [c] (or (< (count c) 3) (Regex/match? verb-re c))))))
+
+(defn- word-set [c]
+  (set (for [w (String/split (String/downcase c) " ") :when (> (count w) 2)] w)))
+
+(defn- closest
+  "[cell jaccard] of the pooled cell sharing the most words with `c`."
+  [c pool]
+  (let [ws (word-set c)]
+    (reduce (fn [[best score] [o os]]
+              (let [union (count (into ws os))
+                    j (if (or (empty? ws) (= 0 union)) 0 (/ (count (filter (fn [w] (contains? os w)) ws)) (* 1.0 union)))]
+                (if (> j score) [o j] [best score])))
+            [nil 0] pool)))
+
+(defn- inserted-runs
+  "Words of `new` that are not in `old`, joined in runs."
+  [old new]
+  (let [ops (List/myers_difference (apply list (String/split old " ")) (apply list (String/split new " ")))]
+    (for [op ops :when (= :ins (elem op 0))
+          :let [run (String/replace (join " " (elem op 1)) (Regex/compile! "^[ ,;.:]+|[ ,;.:]+$") "")] :when (>= (count run) 3)]
+      run)))
+
+(defn- hunks
+  "Line hunks [old-lines new-lines] where the two texts differ."
+  [old new]
+  (loop [ops (List/myers_difference (apply list old) (apply list new)) del [] out []]
+    (if (empty? ops)
+      out
+      (let [op (first ops) kind (elem op 0) ls (vec (elem op 1))]
+        (case kind
+          :eq (recur (rest ops) [] (if (seq del) (conj out [del []]) out))
+          :del (recur (rest ops) ls out)
+          :ins (recur (rest ops) [] (conj out [del ls])))))))
+
+(defn diff [old-text new-text]
+  (let [parts (for [[old-ls new-ls] (hunks (visible-lines old-text) (visible-lines new-text))]
+                (let [olds (mapcat cells old-ls) news (mapcat cells new-ls)
+                      old-pool (mapv (fn [o] [o (word-set o)]) olds) new-pool (mapv (fn [n] [n (word-set n)]) news)
+                      old-set (set olds) new-set (set news)]
+                  {:added (apply concat
+                           (for [c news :when (not (contains? old-set c))]
+                             (let [[best score] (closest c old-pool)]
+                               (if (< score 0.45)
+                                 [{:text c :whole true}]
+                                 (for [run (inserted-runs best c)] {:text run :whole false :in c})))))
+                   :removed (for [c olds :when (and (not (contains? new-set c)) (>= (count c) 12)
+                                                     (< (second (closest c new-pool)) 0.45))]
+                              c)}))]
+    {:added (vec (distinct (mapcat :added parts)))
+     :removed (vec (distinct (mapcat :removed parts)))}))
+
+(defn refs [path]
+  (let [dir (Path/dirname path) file (Path/basename path)
+        out (git dir ["log" (str "-" max-refs) "--format=%H%x09%h%x09%cs%x09%s" "--" file])]
+    (vec (for [row (String/split (or out "") "\n") :when (not (blank? row))]
+           (let [[sha short date subject] (String/split row "\t" (list (tuple :parts 4)))]
+             {:ref sha :short short :date date :subject subject
+              :review (some? (Regex/run (Regex/compile! "(?i)(comment|relecture)") subject))})))))
+
+(defn since
+  "Changes of the file on disk since commit `sha`, or nil for a commit that is not one of its own."
+  [path sha]
+  (when (and (Regex/match? (Regex/compile! "^[0-9a-f]{7,40}$") (or sha ""))
+             (some (fn [r] (starts-with? (:ref r) sha)) (refs path)))
+    (when-let [old (git (Path/dirname path) ["show" (str sha ":./" (Path/basename path))])]
+      (assoc (diff old (File/read! path)) :ref sha))))
