@@ -1,0 +1,78 @@
+;; In-place editing for any host that serves .bl.org files with this kit.
+;; Omega's omega.live-doc owns the editing: one watched shared buffer per file,
+;; so answers, comments, roster notes and in-place edits share one revision
+;; stream and external writes (Emacs, an agent) reach every open page. Omega
+;; is found on the path (the kit's env.bl), else at DOSSIER_OMEGA_SRC or
+;; ~/projects/omega/src. Without it every function here is inert and the host
+;; serves read-only, as before.
+;;
+;;   (live/open! [file ...])            at the host's top level, once
+;;   (live/route conn file opts)        first in the handler; nil off its prefix
+;;   (page/page-h doc css js (live/page conn file opts))
+;;   (live/source file)                 the text the store holds
+;;
+;; opts: :prefix — the routes' absolute path, default "/_live"; a page served
+;; at /x/ uses "/x/_live" (the client resolves `_live/` against the page URL).
+;; :owner — the Tailscale login that edits, default DOSSIER_OWNER.
+(ns dossier.live
+  (:require [web] [dossier.storage :as storage] [dossier.answer :as ans]))
+
+(defn- load-api []
+  (try
+    (let [src (or (System/get_env "DOSSIER_OMEGA_SRC") (Path/expand "~/projects/omega/src"))]
+      (when (and (nil? (try (BeamLisp.Loader/source_path "omega.live-doc.host") (catch _ nil))) (File/dir? src))
+        (BeamLisp.Env/add_search_path src))
+      (BeamLisp.Loader/ensure_loaded "omega.live-doc.store")
+      (BeamLisp.Loader/ensure_loaded "omega.live-doc.host")
+      (into {} (for [[k ns n] [[:open! "omega.live-doc.store" "open!"] [:current "omega.live-doc.store" "current"]
+                               [:update! "omega.live-doc.store" "update!"] [:handler "omega.live-doc.host" "handler"]
+                               [:owner-editor "omega.live-doc.host" "owner-editor"] [:page-config "omega.live-doc.host" "page-config"]]]
+                 [k (BeamLisp.Env/fetch! ns n)])))
+    (catch error
+      (println (str "dossier: live editing unavailable (" (ex-message error) "); serving read-only refresh"))
+      nil)))
+
+(defn- state [] (persistent_term/get :dossier.live/state nil))
+(defn- live-file [path]
+  (let [s (state) p (Path/expand path)] (when (and (:store s) (contains? (:files s) p)) p)))
+
+(defn open!
+  "Open this VM's live store for `files`; later calls add files. Call it at the
+   host's top level: the buffer server lives as long as its caller. True when
+   live editing is available."
+  [files]
+  (let [s (or (state) (let [api (load-api)] {:api api :store (when api ((:open! api) {})) :files #{}}))
+        s (assoc s :files (into (:files s) (map (fn [f] (Path/expand f)) files)))]
+    (persistent_term/put :dossier.live/state s)
+    (when (:store s)
+      (storage/install-writer!
+        (fn [path transform]
+          (let [st (state)]
+            (if (contains? (:files st) path) ((:update! (:api st)) (:store st) path transform "dossier") :pass)))))
+    (boolean (:store s))))
+
+(defn available? [] (boolean (:store (state))))
+
+(defn source
+  "The file's text as the store holds it (the file itself when not live)."
+  [path]
+  (if-let [p (live-file path)] (:text ((:current (:api (state))) (:store (state)) p)) (File/read! path)))
+
+(defn- options [p opts]
+  {:file p :prefix (or (:prefix opts) "/_live")
+   :editor? ((:owner-editor (:api (state))) (or (:owner opts) (System/get_env "DOSSIER_OWNER")))
+   :client (fn [conn] (or (ans/handle (web/req-header conn "tailscale-user-login") (System/get_env "DOSSIER_HANDLE")) "owner"))})
+
+(defn route
+  "The /_live/* routes for one file, or nil (any other path, or not live)."
+  ([conn path] (route conn path {}))
+  ([conn path opts]
+   (when-let [p (live-file path)]
+     (((:handler (:api (state))) (:store (state)) (options p opts)) conn))))
+
+(defn page
+  "page-h's `live` argument for this reader, or nil when the file is not live."
+  ([conn path] (page conn path {}))
+  ([conn path opts]
+   (when-let [p (live-file path)]
+     {:config ((:page-config (:api (state))) (:store (state)) p conn (options p opts))})))

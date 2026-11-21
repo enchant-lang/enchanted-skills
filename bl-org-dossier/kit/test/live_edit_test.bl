@@ -1,5 +1,5 @@
 (ns live-edit-test
-  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.storage :as storage] [live.hiccup :as h]))
+  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.storage :as storage] [dossier.live :as live] [live.hiccup :as h]))
 
 (def text "#+title: T\n\n* One\n\nPara one\nwraps.\n\n- a\n- b\n\n#+begin_ask :id q1 :title \"Why?\"\nBecause.\n#+end_ask\n")
 
@@ -34,3 +34,31 @@
       (is (= [path] @seen))
       (is (= "a\n" (File/read! path)) "the host owns the write")
       (finally (storage/install-writer! nil) (File/rm! path)))))
+
+(deftest a-host-can-remap-or-close-a-blocks-source-lines
+  (let [doc (o/read-doc text)
+        nodes (:nodes doc)
+        doc (assoc doc :nodes (mapv (fn [n] (cond (= 4 (:line n)) (assoc n :src "40:42")
+                                                  (= 7 (:line n)) (assoc n :src nil) :else n)) nodes))
+        out (html (pg/doc-h doc))]
+    (is (includes? out "data-src=\"40:42\"") "an included part maps to its own lines")
+    (is (not (includes? out "data-src=\"4:6\"")))
+    (is (not (includes? out "data-src=\"7:9\"")) "a block with no file line stays closed")
+    (is (includes? out "data-src=\"10:13\""))))
+
+(deftest one-vm-edits-several-files-through-one-live-store
+  (let [dir (str "/tmp/dossier-live-" (erlang/unique_integer (list :positive)))
+        a (str dir "/a.bl.org") b (str dir "/b.bl.org") other (str dir "/c.bl.org")]
+    (File/mkdir_p! dir)
+    (File/write! a "* A\n") (File/write! b "* B\n") (File/write! other "* C\n")
+    (try
+      (is (live/open! [a]) "Omega is on the kit's path")
+      (is (live/open! [b]) "a second file joins the same store")
+      (is (= "* A\n" (live/source a)))
+      (is (= :ok (storage/update! b (fn [t] {:text (str t "\nnew\n") :value :ok}))))
+      (is (= "* B\n\nnew\n" (File/read! b)) "the store publishes to disk")
+      (is (= "* B\n\nnew\n" (live/source b)))
+      (is (= :plain (storage/update! other (fn [t] {:text (str t "x") :value :plain}))) "other files keep the file writer")
+      (is (= "* C\nx" (File/read! other)))
+      (is (nil? (live/route nil other)) "no routes for a file that is not live")
+      (finally (storage/install-writer! nil) (File/rm_rf dir)))))

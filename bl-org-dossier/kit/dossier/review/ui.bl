@@ -2,10 +2,13 @@
 (ns dossier.review.ui (:require [dossier.ui :as ui]))
 
 (defn- source-lines
-  "The node's source lines as `from:to` (end exclusive) for in-place editing."
+  "The node's source lines as `from:to` (end exclusive) for in-place editing.
+   A host whose lines are not the file's (expanded includes) sets `:src`:
+   its own \"from:to\", or nil to leave the block closed."
   [node]
-  (when (and (integer? (:line node)) (integer? (:to node)) (< (:line node) (:to node)))
-    (str (:line node) ":" (:to node))))
+  (if (contains? node :src) (:src node)
+    (when (and (integer? (:line node)) (integer? (:to node)) (< (:line node) (:to node)))
+      (str (:line node) ":" (:to node)))))
 
 (defn decorate [node tree]
   (if (or (nil? tree) (= :props (:t node))) tree

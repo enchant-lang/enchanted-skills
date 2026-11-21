@@ -21,7 +21,7 @@
             [dossier.org :as o] [dossier.page :as pg] [dossier.answer :as ans] [dossier.film :as film]
             [dossier.feedback :as feedback] [dossier.witness :as witness] [dossier.review.http :as review] [dossier.notebook :as nb] [dossier.audience :as audience]
             [dossier.share.host :as sharing] [dossier.share.assets :as publication-assets]
-            [dossier.design :as design] [dossier.presentation :as presentation] [dossier.storage :as storage]))
+            [dossier.design :as design] [dossier.presentation :as presentation] [dossier.live :as live]))
 
 (defn- arg-path []
   (let [a (first (BeamLisp/argv))]
@@ -30,31 +30,10 @@
 
 (def doc-path (arg-path))
 
-;; Omega's live editing (omega.live-doc): one watched shared buffer owns the
-;; file, so answers, comments, roster notes and in-place edits write through it,
-;; and external writes (Emacs, an agent) are pushed to every open page. This
-;; kit's env.bl puts Omega on the path; a host launched from elsewhere finds it
-;; at DOSSIER_OMEGA_SRC or ~/projects/omega/src. Without Omega the page still
-;; serves, reading the file per request and polling as before.
-(def live-api
-  (try
-    (let [src (or (System/get_env "DOSSIER_OMEGA_SRC") (Path/expand "~/projects/omega/src"))]
-      (when (and (nil? (try (BeamLisp.Loader/source_path "omega.live-doc.host") (catch _ nil))) (File/dir? src))
-        (BeamLisp.Env/add_search_path src))
-      (BeamLisp.Loader/ensure_loaded "omega.live-doc.store")
-      (BeamLisp.Loader/ensure_loaded "omega.live-doc.host")
-      (into {} (for [[k ns n] [[:open! "omega.live-doc.store" "open!"] [:current "omega.live-doc.store" "current"]
-                               [:update! "omega.live-doc.store" "update!"] [:handler "omega.live-doc.host" "handler"]
-                               [:owner-editor "omega.live-doc.host" "owner-editor"] [:page-config "omega.live-doc.host" "page-config"]]]
-                 [k (BeamLisp.Env/fetch! ns n)])))
-    (catch error
-      (println (str "dossier: live editing unavailable (" (ex-message error) "); serving read-only refresh"))
-      nil)))
-(def store (when live-api ((:open! live-api) {})))
-(when store
-  (storage/install-writer!
-    (fn [path transform] (if (= path doc-path) ((:update! live-api) store path transform "dossier") :pass))))
-(defn- source [] (if store (:text ((:current live-api) store doc-path)) (File/read! doc-path)))
+;; In-place editing through Omega's watched buffer (dossier.live); without
+;; Omega the page still serves, reading the file and polling as before.
+(live/open! [doc-path])
+(defn- source [] (live/source doc-path))
 
 (defn- context-dir []
   (or (System/get_env "DOSSIER_CONTEXT_DIR")
@@ -85,15 +64,8 @@
   (let [owner (System/get_env "DOSSIER_OWNER")]
     (or (blank? owner) (= owner (web/req-header conn "tailscale-user-login")))))
 
-;; Editing the source needs the configured owner; without one the page reads only.
-(def live-options
-  (when store
-    {:file doc-path :editor? ((:owner-editor live-api) (System/get_env "DOSSIER_OWNER"))
-     :client (fn [conn] (or (ans/handle (web/req-header conn "tailscale-user-login") (System/get_env "DOSSIER_HANDLE")) "owner"))}))
-(def live-route (if store ((:handler live-api) store live-options) (fn [_] nil)))
-(defn- live-page [conn]
-  (when (and store (not (audience/locked?)))
-    {:config ((:page-config live-api) store doc-path conn live-options)}))
+;; Editing the source needs DOSSIER_OWNER; without one the page reads only.
+(defn- live-page [conn] (when-not (audience/locked?) (live/page conn doc-path)))
 
 (defn- param
   "One query parameter (`?design=sober`), decoded; nil when absent."
@@ -170,7 +142,7 @@
 
 (defn router [conn]
  (or (client-only conn)
-     (when-not (audience/locked?) (live-route conn))
+     (when-not (audience/locked?) (live/route conn doc-path))
      (explorer-route conn)
      (design-route conn)
      (when-not (audience/locked?) (sharing/route conn doc-path (fn [text] (publication-options conn text))
