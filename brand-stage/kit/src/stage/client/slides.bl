@@ -1,0 +1,404 @@
+(ns ^:js stage.client.slides
+  "The layouts. Each takes the stage data and the slide record and returns
+   hiccup; 3D layouts also build their group in the shared world once.
+   Grammar (see references/design-guidelines.bl.org): filled = stated,
+   dashed = inferred/assumed, hollow + hatch = missing, ghost = beyond the map,
+   green = the feeling we aim for, red = a gap where the deal can die."
+  (:require [stage.client.h :as h]
+            [stage.client.scene :as w]))
+
+;; main installs the sheet opener here: (open! kind id)
+(defn- phase
+  "Where t (ms, a float) sits in a cycle of period ms, 0..1."
+  [t period]
+  (let [x (/ t period)] (- x (js/Math.floor x))))
+
+(def opener (atom (fn [_ _] nil)))
+(defn open! [kind id] (@opener kind id))
+(defn opens [kind id] {:click (fn [e] (.stopPropagation e) (open! kind id))})
+
+(defn- hot! [e wid on?]
+  (let [flow (.closest (.-currentTarget e) ".flow")]
+    (when flow
+      (.toggle (.-classList flow) "hover" on?)
+      (doseq [p (h/$$ flow (str "path[data-w='" wid "']"))] (.toggle (.-classList p) "hot" on?)))))
+
+(defn by-id [xs] (into {} (map (fn [x] [(:id x) x]) xs)))
+(defn hue [p] (str "var(--p" (:hue p) ")"))
+(defn hue-css [p] (w/token (str "--p" (:hue p)) "#888888"))
+(defn lower [s] (.toLowerCase (str s)))
+(defn initial [p] (.charAt (:name p) 0))
+(defn fmt2 [n] (if (< n 10) (str "0" n) (str n)))
+
+;; ── 1. title ────────────────────────────────────────────────────────────
+(defn- world-title! [d]
+  (when-not (w/has? "title")
+    (let [g (w/group! "title" {:eye [-1.9 0.3 11] :look [-1.9 0 0]}
+                      (fn [t g] (let [orbit (.getObjectByName g "orbit")]
+                                  (set! (.-z (.-rotation orbit)) (* t 0.00012))
+                                  (doseq [c (js->bl (.-children orbit))]
+                                    (set! (.-z (.-rotation c)) (- (* t 0.00012)))))))
+          orbit (js/THREE.Group.)
+          ps (sort-by :order (:pillars d))
+          _ (set! (.-renderOrder orbit) 2)
+          n (count ps)]
+      (set! (.-name orbit) "orbit")
+      (.add g (w/disc 1.25 (w/basic "--ink" {})))
+      (.add g (w/polyline (mapv (fn [i] (let [a (* 2 js/Math.PI (/ i 96))] [(* 2.7 (js/Math.cos a)) (* 2.7 (js/Math.sin a)) -0.05])) (range 97))
+                          (w/dash-mat "--line" {:dashSize 0.06 :gapSize 0.06})))
+      (doseq [[i p] (map-indexed (fn [i p] [i p]) ps)]
+        (let [a (+ (/ js/Math.PI 2) (* 2 js/Math.PI (/ i n)))
+              holder (js/THREE.Group.)
+              r (+ 0.1 (* 0.045 (:worries p)))
+              x (* 2.7 (js/Math.cos a)) y (* 2.7 (js/Math.sin a))]
+          (.add holder (w/disc r (w/basic "--ink" {})))
+          (w/at! holder x y 0.02)
+          (.add orbit holder)
+          (w/label-on! "title" holder (- (+ r 0.2))
+                       [:button.pin-label.small {:on (opens :pillar (:id p))} (lower (:short p))])))
+      (.add g orbit)
+      (.add g (w/dust -7 7 260 (fn [_] 0.6) 7 "--muted")))))
+
+(defn title [d s]
+  (world-title! d)
+  [:div.l-title
+   [:h1.display.brand-voice (:say s)]
+   [:p.sub (or (:subtitle d) (:title s))]])
+
+;; ── 2. the two words ───────────────────────────────────────────────────
+(defn words [d s]
+  (let [ex (by-id (:expressions d))
+        one (fn [k poss rest-word]
+              (let [e (get ex k)]
+                [:button.word {:on (opens :expression k)}
+                 [:span.locale (lower (:locale e))]
+                 [:span.big.brand-voice [:u poss] " " rest-word]
+                 [:span.why (:reason e)]]))]
+    [:div.l-words
+     (one "idea-fr" "Votre" "expertise")
+     [:div.word-rule]
+     (one "idea-en" "Your" "intelligence")]))
+
+;; ── 3. the three fears ─────────────────────────────────────────────────
+(defn- world-fears! [d]
+  (when-not (w/has? "fears")
+    (let [fears (sort-by :order (:fears d))
+          xs [-3.4 0 3.4]
+          g (w/group! "fears" {:eye [0 0.9 11.5] :look [0 0.1 0]}
+                      (fn [t g]
+                        (let [leak (.getObjectByName g "leaves-dust")
+                              k (phase t 6000)]
+                          (set! (.-x (.-scale leak)) (+ 1 (* 1.6 k)))
+                          (set! (.-y (.-scale leak)) (+ 1 (* 1.6 k)))
+                          (set! (.-opacity (.-material leak)) (- 0.7 (* 0.7 k))))
+                        (let [p (.getObjectByName g "leaks-dust")
+                              k (phase t 5000)]
+                          (set! (.-x (.-position p)) (* 2.4 k))
+                          (set! (.-opacity (.-material p)) (- 0.8 (* 0.8 k))))
+                        (let [b (.getObjectByName g "dilutes-ball")
+                              k (* 0.5 (+ 1 (js/Math.sin (* t 0.0012))))]
+                          (set! (.-opacity (.-material b)) (- 1 (* 0.75 k))))))]
+      (doseq [[i f] (map-indexed (fn [i f] [i f]) fears)]
+        (let [x (nth xs i) id (:id f)
+              ball (w/ball 0.72 (w/basic "--ink" {}))]
+          (w/at! ball x 0.6 0)
+          (.add g ball)
+          (cond
+            (= id "leaves")
+            (let [p (w/dust -0.05 0.05 120 (fn [_] 1) 3.2 "--ink")]
+              (set! (.-name p) "leaves-dust") (w/at! p x 0.6 0) (.add g p))
+            (= id "leaks")
+            (let [box (js/THREE.LineSegments. (js/THREE.EdgesGeometry. (js/THREE.BoxGeometry. 2.2 2.2 2.2))
+                                              (w/line-mat "--line" {}))
+                  p (w/dust -0.2 0.2 60 (fn [_] 1) 0.9 "--danger")]
+              (w/at! box x 0.6 0) (.add g box)
+              (set! (.-name p) "leaks-dust") (w/at! p x 0.6 0)
+              (.add g p))
+            :else (set! (.-name ball) "dilutes-ball"))
+          (w/label! "fears" [x -0.75 0]
+                    [:button.pin-label.fear {:on (opens :fear id)}
+                     [:b (lower (:title f))]
+                     [:span.green (:answer f)]
+                     [:span.chips (for [pid (:pillars f)]
+                                    [:span.chip.inferred (lower (get-in (by-id (:pillars d)) [pid :short]))])]]))))))
+
+(defn fears [d s]
+  (world-fears! d)
+  [:div.l-caption [:p.display-s (:say s)]])
+
+;; ── 4. the five yours ──────────────────────────────────────────────────
+(defn- glyph [kind size]
+  (let [r (/ size 2)]
+    [:svg {:viewBox "-50 -50 100 100" :width size :height size :class "glyph" :aria-hidden "true"}
+     (case kind
+       "ring"  [:g [:circle {:r 44 :fill "none" :stroke "currentColor" :stroke-width 7}]
+                   [:circle {:r 22 :fill "currentColor"}]]
+       "grid"  [:g (for [i (range 3) j (range 3)]
+                     [:rect {:x (- (* i 32) 46) :y (- (* j 32) 46) :width 26 :height 26 :fill "currentColor"}])]
+       "house" [:path {:d "M-44 4 L0 -42 L44 4 L44 44 L-44 44 Z" :fill "currentColor"}]
+       "key"   [:g [:circle {:cx -18 :cy 0 :r 24 :fill "none" :stroke "currentColor" :stroke-width 10}]
+                   [:rect {:x 2 :y -5 :width 44 :height 10 :fill "currentColor"}]
+                   [:rect {:x 30 :y 5 :width 8 :height 16 :fill "currentColor"}]]
+       [:path {:d "M0 -46 L10 -10 L46 0 L10 10 L0 46 L-10 10 L-46 0 L-10 -10 Z" :fill "currentColor"}])]))
+
+(defn pillars [d s]
+  (let [ps (sort-by :order (:pillars d))
+        total (count (:worries d))
+        mx (apply max (map :worries ps))]
+    [:div.l-pillars
+     [:p.display-s (:say s)]
+     [:div.pillar-row
+      (for [p ps]
+        [:button.pillar {:on (opens :pillar (:id p)) :class (when (<= (:worries p) 3) "thin")}
+         [:div.glyph-box (glyph (:glyph p) (+ 34 (* 70 (/ (:worries p) mx))))]
+         [:b (lower (:short p))]
+         [:i (:metaphor p)]
+         [:span.tally (for [i (range total)] [:span {:class (if (< i (:worries p)) "on" "")}])]
+         [:span.mono (str (:worries p) " / " total " worries")]])]]))
+
+;; ── 5. four people ─────────────────────────────────────────────────────
+(defn people [d s]
+  (let [ps (sort-by :order (:personas d))]
+    [:div.l-people
+     [:div.field
+      [:svg.field-svg {:viewBox "0 0 100 100" :preserveAspectRatio "none" :aria-hidden "true"}
+       [:line {:x1 0 :y1 100 :x2 100 :y2 100 :class "axis"}]
+       [:line {:x1 0 :y1 0 :x2 0 :y2 100 :class "axis"}]
+       [:line {:x1 50 :y1 0 :x2 50 :y2 100 :class "mid"}]
+       [:line {:x1 0 :y1 50 :x2 100 :y2 50 :class "mid"}]]
+      [:span.axis-x "uses ai already →"]
+      [:span.axis-y "↑ weighs on the decision"]
+      (for [p ps]
+        (let [size (+ 56 (* 64 (:power p)))]
+          [:button.person {:on (opens :persona (:id p))
+                           :style (str "left:" (+ 8 (* 84 (:fluency p))) "%;bottom:" (+ 4 (* 80 (:power p))) "%;--hue:" (hue p) ";--size:" size "px")}
+           [:span.disc.assumed (initial p)]
+           [:span.who [:b (lower (:name p))] [:span (lower (:role p))]]
+           [:span.quote (str "« " (first (:says p)) " »")]
+           [:span.enters (str "joins at step " (:enters p))]]))]]))
+
+;; ── 6. the journey ─────────────────────────────────────────────────────
+(def sx 1.55)
+(defn- step-x [n] (* (- n 1) sx))
+
+(defn- world-journey! [d]
+  (when-not (w/has? "journey")
+    (let [steps (sort-by :n (:steps d))
+          beyond (filter (fn [p] (= "beyond" (:scope p))) (sort-by :order (:phases d)))
+          ps (sort-by :order (:personas d))
+          last-x (step-x (count steps))
+          H 3.2
+          conf (fn [st] (* H (- 1 (:doubt st))))
+          aim (fn [st] (* H (:warmth st)))
+          g (w/group! "journey" {:eye [5.2 2.2 11.5] :look [5.0 0.9 0]}
+                      (fn [t g] (set! (.-y (.-rotation g)) (* 0.035 (js/Math.sin (* t 0.00025))))))
+          feel-line (w/curve-points (mapv (fn [st] [(step-x (:n st)) (conf st) 0]) steps) 120)
+          aim-line (w/curve-points (mapv (fn [st] [(step-x (:n st)) (aim st) 0]) steps) 120)
+          lane-z {0 0.45 1 -0.45 2 -1.35 3 1.35}
+          floor -0.55
+          presence (:presence d)
+          cell (fn [pid n] (first (filter (fn [c] (and (= pid (:persona c)) (= n (:step c)))) presence)))]
+      ;; the distance the brand has to cover: between how they feel and how we aim to leave them
+      (.add g (w/ribbon aim-line feel-line (w/basic "--forest" {:opacity 0.1})))
+      (.add g (w/polyline feel-line (w/dash-mat "--ink" {:dashSize 0.14 :gapSize 0.07})))
+      (.add g (w/tube feel-line 0.025 (w/basic "--ink" {:opacity 0.35})))
+      (.add g (w/polyline aim-line (w/dash-mat "--forest" {:dashSize 0.14 :gapSize 0.07})))
+      ;; doubt as fog: grains stand where doubt is high
+      (let [dens (fn [x] (let [i (max 0 (min (- (count steps) 1) (js/Math.round (/ x sx))))]
+                           (js/Math.pow (:doubt (nth steps i)) 3)))]
+        (.add g (w/at! (w/dust -0.6 (+ last-x -1) 900 dens 3.4 "--muted") 0 1.4 0)))
+      ;; the floor: one lane per person
+      (.add g (w/polyline [[-0.6 floor 0] [(+ last-x (* sx 5)) floor 0]] (w/dash-mat "--line" {})))
+      (doseq [st steps]
+        (let [x (step-x (:n st))]
+          (.add g (w/polyline [[x floor 0] [x (conf st) 0]] (w/line-mat "--line" {:opacity 0.6})))
+          (.add g (w/at! (w/disc 0.09 (w/basic "--ink" {})) x (conf st) 0.01))
+          (.add g (w/at! (w/disc 0.07 (w/basic "--forest" {})) x (aim st) 0.01))
+          (w/label! "journey" [x (- floor 0.55) 1.6]
+                    [:button.pin-label.step {:on (opens :step (:id st))}
+                     [:span.mono (fmt2 (:n st))] [:b (lower (:title st))]])
+          (w/label! "journey" [x (+ (aim st) 0.42) 0]
+                    [:span.pin-label.feel (:feel st)])
+          (w/label! "journey" [x (- (conf st) 0.3) 0]
+                    [:span.pin-label.mood (first (js->bl (.split (:mood st) ",")))])))
+      (doseq [p ps]
+        (let [z (get lane-z (:hue p))
+              col (hue-css p)
+              asks (filter (fn [st] (= "asks" (:state (cell (:id p) (:n st))))) steps)]
+          (when (> (count asks) 1)
+            (let [pts (mapv (fn [st] [(step-x (:n st)) floor (if (= 5 (:n st)) (* 0.25 z) z)]) asks)]
+              (.add g (w/tube (if (> (count pts) 2) (w/curve-points pts 60) pts) 0.05 (w/hue-mat col {:opacity 0.9})))))
+          (doseq [st steps]
+            (let [c (cell (:id p) (:n st))
+                  x (step-x (:n st))
+                  zz (if (= 5 (:n st)) (* 0.25 z) z)
+                  flat (fn [m] (set! (.-x (.-rotation m)) (- (/ js/Math.PI 2))) m)]
+              (cond
+                (nil? c) (.add g (w/at! (flat (w/ring 0.13 0.025 (w/basic "--danger" {:opacity 0.8}))) x (+ floor 0.01) zz))
+                (= "asks" (:state c)) (.add g (w/at! (flat (w/disc 0.11 (w/hue-mat col {}))) x (+ floor 0.02) zz))
+                (= "rare" (:state c)) (.add g (w/at! (flat (w/ring 0.12 0.03 (w/hue-mat col {:opacity 0.7}))) x (+ floor 0.02) zz))
+                :else (.add g (w/at! (flat (w/disc 0.04 (w/basic "--line" {}))) x (+ floor 0.01) zz)))))
+          (w/label! "journey" [(- (step-x 1) 0.75) floor z]
+                    [:button.pin-label.lane {:style (str "--hue:" (hue p)) :on (opens :persona (:id p))} (initial p)])))
+      ;; where deals stall
+      (let [x (step-x 5)
+            r (w/ring 1.75 0.03 (w/basic "--danger" {:opacity 0.75}))]
+        (set! (.-x (.-rotation r)) (- (/ js/Math.PI 2)))
+        (.add g (w/at! r x (+ floor 0.03) 0))
+        (w/label! "journey" [x (- floor 0.1) -1.9] [:span.pin-label.stall "where deals stall"]))
+      ;; the road beyond the booked meeting: drawn, and empty
+      (.add g (w/polyline [[(step-x 7) (conf (last steps)) 0] [(+ last-x (* sx 4.5)) (conf (last steps)) 0]]
+                          (w/dash-mat "--line" {:dashSize 0.05 :gapSize 0.12})))
+      (doseq [[i ph] (map-indexed (fn [i p] [i p]) beyond)]
+        (let [x (+ (step-x 8) (* sx i))]
+          (.add g (w/at! (w/ring 0.16 0.02 (w/basic "--line" {})) x (conf (last steps)) 0))
+          (w/label! "journey" [x (- floor 0.55) 1.6]
+                    [:button.pin-label.step.ghost {:on (opens :phase (:id ph))} [:span.mono "··"] [:b (lower (:title ph))]]))))))
+
+(defn journey [d s]
+  (world-journey! d)
+  [:div.l-caption.journey-key
+   [:p.display-s (:say s)]
+   [:div.key
+    [:span [:i.k-line.ink] "how they feel"]
+    [:span [:i.k-line.green] "what we aim to leave"]
+    [:span [:i.k-dust] "doubt"]
+    [:span [:i.k-ring.red] "no one written here"]]])
+
+;; ── 7. who is where ────────────────────────────────────────────────────
+(defn presence [d s]
+  (let [steps (sort-by :n (:steps d))
+        ps (sort-by :order (:personas d))
+        cell (fn [pid n] (first (filter (fn [c] (and (= pid (:persona c)) (= n (:step c)))) (:presence d))))
+        empty-col (set (filter (fn [n] (not-any? (fn [c] (= n (:step c))) (:presence d))) (map :n steps)))]
+    [:div.l-presence
+     [:div.matrix {:style (str "--cols:" (count steps))}
+      [:div.mh]
+      (for [st steps]
+        [:button.mh.col {:class (when (contains? empty-col (:n st)) "gapcol") :on (opens :step (:id st))}
+         [:span.mono (fmt2 (:n st))] [:span (lower (:title st))]])
+      (for [p ps]
+        (list
+          [:button.mh.row {:style (str "--hue:" (hue p)) :on (opens :persona (:id p))}
+           [:span.disc (initial p)] [:span (lower (:name p))]]
+          (for [st steps]
+            (let [c (cell (:id p) (:n st))
+                  state (if c (:state c) "none")]
+              [:div.cell {:class state :style (str "--hue:" (hue p)) :title (if c (:question c) "nothing written")}
+               (case state
+                 "asks" [:span.q (:question c)]
+                 "rare" [:span.q.dim (lower (:question c))]
+                 "absent" [:span.q.dim "not there yet"]
+                 [:span.q.hole ""])]))))]]))
+
+;; ── 8. worries → pillars ───────────────────────────────────────────────
+(defn worries [d s]
+  (let [ws (sort-by :order (:worries d))
+        ps (sort-by :order (:personas d))
+        pls (sort-by :order (:pillars d))
+        steps (sort-by :n (:steps d))
+        n (count ws)
+        H 100 rowh (/ H n)
+        py (fn [i] (* H (/ (+ i 0.5) (count ps))))
+        ly (fn [i] (* H (/ (+ i 0.5) (+ 1 (count pls)))))
+        wy (fn [i] (* rowh (+ i 0.5)))
+        pidx (into {} (map-indexed (fn [i p] [(:id p) i]) ps))
+        lidx (into {} (map-indexed (fn [i p] [(:id p) i]) pls))
+        curve (fn [x1 y1 x2 y2] (str "M" x1 " " y1 " C" (/ (+ x1 x2) 2) " " y1 " " (/ (+ x1 x2) 2) " " y2 " " x2 " " y2))]
+    [:div.l-worries
+     [:div.flow
+      [:svg.flow-svg {:viewBox "0 0 100 100" :preserveAspectRatio "none" :aria-hidden "true"}
+       (for [[i wv] (map-indexed (fn [i x] [i x]) ws)]
+         (list
+           (for [pid (:personas wv)]
+             [:path {:d (curve 14 (py (get pidx pid)) 34 (wy i)) :class (str "f p" (get-in (by-id ps) [pid :hue])) :data-w (:id wv)}])
+           (if (:tone wv)
+             [:path {:d (curve 72 (wy i) 88 (ly (count pls))) :class "f tone" :data-w (:id wv)}]
+             (for [lid (:pillars wv)]
+               [:path {:d (curve 72 (wy i) 88 (ly (get lidx lid))) :class "f ink" :data-w (:id wv)}]))))]
+      [:div.col-people
+       (for [[i p] (map-indexed (fn [i p] [i p]) ps)]
+         [:button.node.person-node {:style (str "top:" (py i) "%;--hue:" (hue p)) :on (opens :persona (:id p))}
+          [:span.disc (initial p)] [:span.lbl (lower (:name p))]])]
+      [:div.col-worries
+       (for [[i wv] (map-indexed (fn [i x] [i x]) ws)]
+         [:button.wrow {:style (str "top:" (wy i) "%;height:" rowh "%")
+                        :on (merge (opens :worry (:id wv))
+                                   {:mouseenter (fn [e] (hot! e (:id wv) true))
+                                    :mouseleave (fn [e] (hot! e (:id wv) false))})
+                        :data-w (:id wv)}
+          [:span.steps (for [st steps]
+                         [:i {:class (if (some (fn [n] (= n (:n st))) (:steps wv)) "on" "")}])]
+          [:span.wt (str "« " (:text wv) " »")]])]
+      [:div.col-pillars
+       (for [[i p] (map-indexed (fn [i p] [i p]) pls)]
+         [:button.node.pillar-node {:style (str "top:" (ly i) "%") :on (opens :pillar (:id p))}
+          [:span.sq] [:span.lbl (lower (:short p))]])
+       [:div.node.pillar-node.tone {:style (str "top:" (ly (count pls)) "%")} [:span.sq.hollow] [:span.lbl "tone only"]]]]]))
+
+;; ── 9. the framework ───────────────────────────────────────────────────
+(defn framework [d s]
+  (let [steps (sort-by :n (:steps d))
+        beyond (filter (fn [p] (= "beyond" (:scope p))) (sort-by :order (:phases d)))
+        dims (sort-by :order (:dimensions d))
+        cov (:coverage d)
+        cell (fn [dim col] (first (filter (fn [c] (and (= dim (:dimension c)) (= col (:col c)))) cov)))
+        cols (concat (map (fn [st] {:col (str "s" (:n st)) :label (fmt2 (:n st)) :kind "step" :id (:id st)}) steps)
+                     (map (fn [p] {:col (:id p) :label (lower (:title p)) :kind "beyond" :id (:id p)}) beyond))
+        pct (:coverage-pct d)]
+    [:div.l-framework
+     [:div.big-number [:b (str pct "%")] [:span "of a full journey map is written"]]
+     [:div.grid {:style (str "--cols:" (count cols))}
+      [:div.gh]
+      (for [c cols] [:div.gh {:class (:kind c)} [:span (:label c)]])
+      (for [dm dims]
+        (list
+          [:button.gh.dim {:on (opens :dimension (:id dm))} (lower (:title dm))]
+          (for [c cols]
+            (let [x (cell (:id dm) (:col c))]
+              [:div.gc {:class (:state x) :title (str (:title dm) " · " (:label c) " — " (:state x))}]))))]]))
+
+;; ── 10. the brand process ──────────────────────────────────────────────
+(defn process [d s]
+  (let [tracks [["identity" "identity"] ["message" "message"] ["media" "media"] ["experience" "experience"]]
+        stages (sort-by :order (:stages d))]
+    [:div.l-process
+     (for [[k label] tracks]
+       [:div.track
+        [:div.track-name label]
+        [:div.track-line
+         (for [st (filter (fn [x] (= k (:track x))) stages)]
+           [:button.stage {:class (:status st) :on (opens :stage (:id st))}
+            [:span.dot] [:span.st (lower (:title st))] [:span.mono (or (:date st) (:status st))]])]])
+     [:div.key
+      [:span [:i.k-dot.done] "done"] [:span [:i.k-dot.now] "now"]
+      [:span [:i.k-dot.next] "next"] [:span [:i.k-dot.open] "nobody has started"]]]))
+
+;; ── 11. gaps ───────────────────────────────────────────────────────────
+(defn gaps [d s]
+  (let [gs (:gaps d)]
+    [:div.l-gaps
+     [:div.gap-head [:b.mono (count gs)] [:span (:say s)]]
+     [:div.gap-grid
+      (for [g gs]
+        [:button.gap {:class (str "sev" (:severity g) " " (:kind g)) :on (opens :gap (:id g))}
+         [:span.ring]
+         [:span.gt (:title g)]
+         [:span.gk.mono (lower (:kind-label g))]])]]))
+
+(defn render [d s]
+  (case (:layout s)
+    "title" (title d s)
+    "words" (words d s)
+    "fears" (fears d s)
+    "pillars" (pillars d s)
+    "people" (people d s)
+    "journey" (journey d s)
+    "presence" (presence d s)
+    "worries" (worries d s)
+    "framework" (framework d s)
+    "process" (process d s)
+    "gaps" (gaps d s)
+    [:div.l-caption [:p.display-s (:say s)]]))
+
+(def world-layouts #{"title" "fears" "journey"})

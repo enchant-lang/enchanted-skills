@@ -1,0 +1,53 @@
+(ns stage.model-test
+  (:require [stage.model :as m] [stage.project :as pj] [stage.deck :as dk] [datom]))
+
+;; The worked example is the fixture: the Knowledger model and deck.
+(def root (or (System/get_env "STAGE_EXAMPLE") (Path/expand "~/company/brand-development/knowledger-brand")))
+(def dir (str root "/model"))
+
+(deftest the-model-loads-without-problems
+  (let [r (m/read-model dir)]
+    (is (= [] (m/problems r)))
+    (is (= 154 (count (:entities r))))))
+
+(deftest a-dangling-lookup-ref-is-a-problem-not-a-silent-nil
+  (let [r (update (m/read-model dir) :entities conj
+                  {:worry/id :w-ghost :worry/text "?" :worry/personas [[:persona/id :nobody]]})]
+    (is (some (fn [p] (= :dangling-ref (:problem p))) (m/problems r)))))
+
+(deftest lookup-refs-become-ids-through-the-db
+  (let [st (m/load! dir)
+        d (pj/stage-data st)
+        karim (first (filter (fn [p] (= "karim" (:id p))) (:personas d)))
+        cell (first (filter (fn [c] (= "s5-nadia" (:id c))) (:presence d)))]
+    (is (= 5 (:enters karim)))
+    (is (= 4 (count (:says karim))))
+    (is (= {:persona "nadia" :step 5 :state "asks"} (select-keys cell [:persona :step :state])))
+    (datom/close! (:conn st))))
+
+(deftest the-gap-rules-find-what-the-notebook-leaves-open
+  (let [st (m/load! dir)
+        g (set (map :id (:gaps (pj/stage-data st))))]
+    (is (contains? g "beyond"))        ; nothing after the booked meeting
+    (is (contains? g "stall-5"))       ; Karim and Nadia enter together
+    (is (contains? g "silent-1"))      ; « Who is where » has no step 1
+    (is (contains? g "silent-7"))
+    (is (contains? g "absent-nadia"))
+    (is (contains? g "rare-salma"))
+    (is (contains? g "asset-hosting-sheet"))
+    (is (not (contains? g "silent-5")))
+    (datom/close! (:conn st))))
+
+(deftest coverage-counts-only-what-is-written
+  (let [st (m/load! dir)
+        d (pj/stage-data st)]
+    (is (= 120 (:coverage-cells d)))   ; 10 dimensions × (7 steps + 5 phases beyond)
+    (is (< 0 (:coverage-pct d) 50))
+    (is (every? (fn [c] (= "beyond" (:state c))) (filter (fn [c] (= "pilot" (:col c))) (:coverage d))))
+    (datom/close! (:conn st))))
+
+(deftest the-deck-reads-one-slide-per-heading
+  (let [deck (dk/read-deck (File/read! (str root "/stage.bl.org")))]
+    (is (= 11 (count (:slides deck))))
+    (is (= [] (dk/problems deck)))
+    (is (= "journey" (:layout (nth (:slides deck) 5))))))

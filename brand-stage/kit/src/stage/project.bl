@@ -1,0 +1,202 @@
+(ns stage.project
+  "What the stage draws, read from the datom db: entity projections, the
+   customer-experience coverage grid, and the gaps. Gaps are rules over the
+   db, never prose in the deck — change the EDN and the gap slide changes."
+  (:require [datom] [stage.model :as m]))
+
+(defn- by [k xs] (into {} (map (fn [x] [(k x) x]) xs)))
+(defn- sort-on [k xs] (vec (sort-by k xs)))
+
+;; ── projections ────────────────────────────────────────────────────────
+(defn entities
+  "Every kind, flattened, with step refs turned into step numbers (the
+   stage's time axis) and persona lines folded into their persona."
+  [db schema]
+  (let [pk (fn [a] (m/pull-kind db schema a))
+        steps (sort-on :n (pk :step/id))
+        n-of (into {} (map (fn [s] [(:id s) (:n s)]) steps))
+        nums (fn [ids] (vec (sort (map n-of ids))))
+        lines (pk :line/id)
+        lines-of (fn [pid kind] (mapv :text (sort-on :order (filter (fn [l] (and (= pid (:persona l)) (= kind (:kind l)))) lines))))
+        per-pillar (m/count-by db :worry/pillars :pillar/id)
+        per-persona (m/count-by db :worry/personas :persona/id)
+        per-step (m/count-by db :worry/steps :step/id)]
+    {:brand (first (pk :brand/id))
+     :expressions (pk :expression/id)
+     :pillars (sort-on :order (map (fn [p] (assoc p :worries (get per-pillar (:id p) 0))) (pk :pillar/id)))
+     :fears (sort-on :order (pk :fear/id))
+     :personas (sort-on :order
+                        (map (fn [p] (assoc p :enters (n-of (:enters p))
+                                            :says (lines-of (:id p) "says")
+                                            :solves (lines-of (:id p) "solves")
+                                            :fears-us (lines-of (:id p) "fears-us")
+                                            :worries (get per-persona (:id p) 0)))
+                             (pk :persona/id)))
+     :phases (sort-on :order (pk :phase/id))
+     :steps (mapv (fn [s] (assoc s :worries (get per-step (:id s) 0))) steps)
+     :principles (sort-on :order (map (fn [p] (update p :steps nums)) (pk :principle/id)))
+     :presence (vec (map (fn [c] (update c :step n-of)) (pk :presence/id)))
+     :worries (sort-on :order (map (fn [w] (update w :steps nums)) (pk :worry/id)))
+     :dimensions (sort-on :order (pk :dimension/id))
+     :stages (sort-on :order (pk :stage/id))
+     :assets (vec (map (fn [a] (update a :steps (fn [ss] (nums (or ss []))))) (pk :asset/id)))}))
+
+(defn- js-round [x] (erlang/round x))
+
+;; ── the customer-experience grid ───────────────────────────────────────
+(defn coverage
+  "Dimension × column, where a column is a step or a phase beyond the map.
+   :filled — the model answers it; :thin — only drafts or missing assets;
+   :empty — nothing; :beyond — the notebook never reached that phase."
+  [{:keys [steps phases dimensions presence worries assets]}]
+  (let [beyond (filter (fn [p] (= "beyond" (:scope p))) phases)
+        at-step (fn [xs n] (filter (fn [x] (some (fn [k] (= k n)) (:steps x))) xs))
+        cell (fn [dim st]
+               (let [a (:attr dim) n (:n st)]
+                 (cond
+                   (nil? a) "empty"
+                   (= a "presence") (if (some (fn [c] (and (= n (:step c)) (= "asks" (:state c)))) presence) "filled" "empty")
+                   (= a "worry") (if (seq (at-step worries n)) "filled" "empty")
+                   (= a "asset") (let [xs (at-step assets n)]
+                                   (cond (some (fn [x] (= "exists" (:status x))) xs) "filled"
+                                         (some (fn [x] (= "draft" (:status x))) xs) "thin"
+                                         (seq xs) "missing"
+                                         :else "empty"))
+                   :else (let [v (get st (keyword (name (keyword a))))]
+                           (if (and v (not= v "")) "filled" "empty")))))
+        cells (vec (concat
+                     (for [dm dimensions st steps] {:dimension (:id dm) :col (str "s" (:n st)) :state (cell dm st)})
+                     (for [dm dimensions ph beyond] {:dimension (:id dm) :col (:id ph) :state "beyond"})))
+        filled (count (filter (fn [c] (= "filled" (:state c))) cells))]
+    {:coverage cells
+     :coverage-pct (js-round (* 100 (/ filled (max 1 (count cells)))))
+     :coverage-filled filled :coverage-cells (count cells)}))
+
+;; ── gaps ───────────────────────────────────────────────────────────────
+(def kind-labels
+  {"silent-step" "nobody written here" "unanswered-step" "no worry answered"
+   "late-approver" "arrives late" "rare" "drops out" "stall" "stall point"
+   "missing-asset" "asset to make" "beyond" "map stops" "no-signal" "framework row empty"
+   "inferred" "our reading" "outside-fears" "outside the fears" "thin-pillar" "thin message"
+   "tension" "contradiction"})
+
+(defn- gap [m] (assoc m :kind-label (get kind-labels (:kind m) (:kind m))))
+
+(defn gaps
+  "Every gap the rules find, heaviest first. Each rule is a datalog query
+   over the db or a fold over the projection; each gap names where it is."
+  [db E]
+  (let [steps (:steps E)
+        S (by :n steps)
+        P (by :id (:personas E))
+        ;; datom's engine has no (not …): a gap is the difference of two queries
+        all-n (set (datom/q '[:find [?n ...] :where [?s :step/n ?n]] db))
+        silent (sort (remove (set (datom/q '[:find [?n ...] :where [?c :presence/step ?s] [?s :step/n ?n]] db)) all-n))
+        unanswered (sort (remove (set (datom/q '[:find [?n ...] :where [?w :worry/steps ?s] [?s :step/n ?n]] db)) all-n))
+        absent (datom/q '[:find ?pid (count ?c) :where [?c :presence/state :absent] [?c :presence/persona ?p] [?p :persona/id ?pid]] db)
+        rare (datom/q '[:find ?pid ?n :where [?c :presence/state :rare] [?c :presence/persona ?p] [?p :persona/id ?pid]
+                        [?c :presence/step ?s] [?s :step/n ?n]] db)
+        entering (datom/q '[:find ?n (count ?p) :where [?p :persona/enters ?s] [?s :step/n ?n]] db)
+        early (datom/q '[:find ?pid ?n ?en :where [?p :persona/id ?pid] [?p :persona/enters ?e] [?e :step/n ?en]
+                         [?c :presence/persona ?p] [?c :presence/state :asks] [?c :presence/step ?s] [?s :step/n ?n]
+                         [(< ?n ?en)]] db)
+        missing (filter (fn [a] (= "missing" (:status a))) (:assets E))
+        beyond (filter (fn [p] (= "beyond" (:scope p))) (:phases E))
+        empty-dims (filter (fn [d] (nil? (:attr d))) (:dimensions E))
+        no-fear (datom/q '[:find [?id ...] :where [?w :worry/id ?id] [(missing? $ ?w :worry/fears)] [(missing? $ ?w :worry/tone)]] db)
+        all-pillars (count (:pillars E))
+        specific (frequencies (mapcat :pillars (filter (fn [w] (< (count (:pillars w)) all-pillars)) (:worries E))))
+        thin (sort (for [p (:pillars E) :when (<= (get specific (:id p) 0) 2)] (.toLowerCase (:short p))))
+        inferred (count (datom/q '[:find [?f ...] :where [?f :fear/id _] [?f :fact/basis :inferred]] db))]
+    (->> (concat
+           (for [n silent]
+             (gap {:id (str "silent-" n) :kind "silent-step" :severity 2 :step n
+                   :title (str "Step " n ": no one's question")
+                   :line (str "« " (:title (get S n)) " » has no row in « Who is where ». We do not know what each person asks here.")
+                   :evidence "presence table covers steps 2–6"
+                   :move "Write one line per person for this step, even « not there yet »."}))
+           (for [n unanswered]
+             (gap {:id (str "unanswered-" n) :kind "unanswered-step" :severity (if (= n 1) 1 2) :step n
+                   :title (str "Step " n ": no worry answered")
+                   :line (str "None of the fifteen worries is placed at « " (:title (get S n)) " ».")
+                   :evidence "worry table, Step column"
+                   :move (if (= n 1) "Step 1 is about knowing their state; decide whether an ad belongs here at all."
+                             "Pick the worry this moment must settle, and the asset that settles it.")}))
+           (for [[pid k] absent]
+             (let [p (get P (name pid))]
+               (gap {:id (str "absent-" (name pid)) :kind "late-approver" :severity (if (>= (:power p) 0.7) 3 2)
+                     :persona (name pid) :step (:enters p)
+                     :title (str (:name p) " hears nothing for " k " steps")
+                     :line (str (:name p) " is « not there yet » until step " (:enters p) ", yet " (.toLowerCase (:role p)) " decides whether the firm can say yes. The first thing " (:name p) " reads is forwarded by someone else.")
+                     :evidence "Who is where: « Not there yet »"
+                     :move "Give the forwarder something written for her: the hosting and access sheet."})))
+           (for [[pid n] rare]
+             (let [p (get P (name pid))]
+               (gap {:id (str "rare-" (name pid)) :kind "rare" :severity 1 :persona (name pid) :step n
+                     :title (str (:name p) " rarely books")
+                     :line (str (:name p) " is there until step " (- n 1) " and drops out at step " n ". Who carries that case into the booking?")
+                     :evidence "Who is where: « Rarely books »"
+                     :move "Let her bring a partner: name it on the booking page."})))
+           ;; the first step anyone enters is the start of the journey, not a stall
+           (for [[n k] entering :when (and (>= k 2) (> n (apply min (map first entering))))]
+             (gap {:id (str "stall-" n) :kind "stall" :severity 3 :step n
+                   :title (str k " people enter at step " n)
+                   :line (str "« " (:title (get S n)) " » is where deals stall: two people arrive late and send everyone back to the start. "
+                              (count (filter (fn [a] (some (fn [x] (= x n)) (:steps a))) missing)) " of its assets do not exist yet.")
+                   :evidence "« Karim and Nadia enter at step five, and that is where deals stall »"
+                   :move "Make the forwardable kit before the next ad: minute film, one-pager, hosting sheet."}))
+           (for [a missing]
+             (gap {:id (str "asset-" (:id a)) :kind "missing-asset" :severity (if (some (fn [n] (>= n 5)) (:steps a)) 2 1)
+                   :step (first (:steps a))
+                   :title (:title a)
+                   :line (str "Asked for at step " (apply str (interpose ", " (:steps a))) "; nothing exists. " (or (:note a) ""))
+                   :evidence "process.edn asset status"
+                   :move "Brief it with the step's « what we make them feel »."}))
+           [(gap {:id "beyond" :kind "beyond" :severity 3
+                  :title (str "The map stops at the booked meeting")
+                  :line (str (count beyond) " phases have no step: " (apply str (interpose ", " (map (fn [p] (.toLowerCase (:title p))) beyond)))
+                             ". The brand promises « it stays theirs »; nothing yet says how that feels after signing.")
+                  :evidence "journey.edn phases with scope :beyond"
+                  :move "Walk the four people through the meeting and the first month the same way."})]
+           (when (seq empty-dims)
+             [(gap {:id "no-signal" :kind "no-signal" :severity 2
+                    :title (str (apply str (interpose " and " (map (fn [d] (.toLowerCase (:title d))) empty-dims))) ": empty everywhere")
+                    :line "No step says how we would know it worked, or who on our side owns it. The doubt curve on the journey is our estimate, not a measure."
+                    :evidence "framework.edn dimensions with no source"
+                    :move "One signal per step (a click, a forward, a reply) and one owner."})])
+           (when (seq thin)
+             [(gap {:id "thin-pillars" :kind "thin-pillar" :severity 2
+                    :title (str (count thin) " pillars carry two worries or fewer")
+                    :line (str (apply str (interpose ", " thin)) " answer at most two specific worries each — the pillars the approver cares about. The heaviest pillar carries " (apply max (vals specific)) ".")
+                    :evidence "worry table, Which « yours » (the « All five » row left out)"
+                    :move "Write the Nadia ads: one per pillar, for steps 4 and 5."})])
+           (when (seq no-fear)
+             [(gap {:id "outside-fears" :kind "outside-fears" :severity 1
+                    :title (str (count no-fear) " worries sit outside the three fears")
+                    :line "Leaves, leaks, dilutes explain most worries — not the daily ones: explaining the file again, the changed amount, keeping Claude, the next model, the money."
+                    :evidence "worries without a fear link (inferred)"
+                    :move "Name a fourth, everyday fear, or let these ads speak about time, not ownership."})])
+           (for [[pid n en] (take 1 (sort early))]
+             (let [p (get P (name pid))]
+               (gap {:id (str "tension-" (name pid)) :kind "tension" :severity 1 :persona (name pid) :step en
+                     :title (str (:name p) " asks before arriving")
+                     :line (str "The notebook says " (:name p) " enters at step " en ", but gives questions from step " n ". Does " (:name p) " see the ad, or hear about it from a colleague?")
+                     :evidence "« Karim and Nadia enter at step five » vs the Who is where table"
+                     :move "Decide: a partner ad at step 2, or none."})))
+           (when (> inferred 0)
+             [(gap {:id "inferred-fears" :kind "inferred" :severity 1
+                    :title "Which pillar answers which fear is our reading"
+                    :line "The notebook says « votre expertise » answers all three fears at once; the dashed links are ours."
+                    :evidence "brand.edn :fear/pillars, basis :inferred"
+                    :move "Confirm or redraw the links on Friday."})]))
+         (sort-by (fn [g] [(- (:severity g)) (or (:step g) 99) (:id g)]))
+         vec)))
+
+(defn stage-data
+  "Everything the client needs: entities, coverage, gaps, stats."
+  [{:keys [db model datoms]}]
+  (let [E (entities db (:schema model))
+        C (coverage E)
+        G (gaps db E)]
+    (merge E C {:gaps G
+                :stats {:entities (count (:entities model)) :datoms datoms :files (:files model)}})))

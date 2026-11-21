@@ -1,0 +1,2 @@
+# Compiler diagnostics contain machine-specific paths; the browser uses .mjs.
+*.json

@@ -1,0 +1,86 @@
+(ns stage.mcp
+  "Brand-model verbs as MCP tools, so any harness can read a brand the way
+   the stage does: check a model folder, list its gaps, read the coverage of
+   the customer-experience map, pull one entity, run a read-only Datalog
+   query, or start a new brand model from the same schema.
+
+     claude mcp add brand-stage -- bl run -p ~/projects/enchanted-skills/brand-stage/kit/src \\
+       ~/projects/enchanted-skills/brand-stage/kit/mcp.bl
+
+   Every tool takes `model`, an absolute path to a folder holding index.edn.
+   Queries are read with clojure.edn (never evaluated) and run against a
+   fresh in-memory db that is released afterwards."
+  (:require [mcp.server :as mcp] [bl.json :as json] [clojure.edn :as edn] [datom]
+            [stage.model :as m] [stage.project :as pj]))
+
+(defn- jsonable [v]
+  (cond (map? v) (into {} (for [[k x] v] [(if (keyword? k) (if (namespace k) (str (namespace k) "/" (name k)) (name k)) (str k)) (jsonable x)]))
+        (set? v) (mapv jsonable (sort-by str v))
+        (sequential? v) (mapv jsonable v)
+        (keyword? v) (if (namespace v) (str (namespace v) "/" (name v)) (name v))
+        :else v))
+
+(defn- envelope [v]
+  (let [j (jsonable v)]
+    {"isError" (boolean (and (map? j) (get j "error")))
+     "content" [{"type" "text" "text" (json/encode j)}]
+     "structuredContent" (if (map? j) j {"result" j})}))
+
+(defn- schema [props required] {"type" "object" "properties" props "required" required})
+(def ^:private s {"type" "string" "minLength" 1})
+
+(defn- with-db [dir f]
+  (let [st (m/load! (Path/expand dir))]
+    (try (f st) (finally (try (datom/close! (:conn st)) (catch e nil))))))
+
+(defn- guarded [f] (fn [a] (try (envelope (f a)) (catch e (envelope {:error (str (ex-message e))})))))
+
+(def guide
+  (str "brand-stage reads a brand as data: a folder of EDN (index.edn, schema.edn, tx files) loaded into an in-memory datom db. "
+       "Entities: brand, expression, pillar (the promise's parts), fear, persona, line (a persona's self-talk/jobs/objections), "
+       "phase, step (journey), presence (persona × step → question), worry (persona, step, proof, pillar), dimension (CX framework rows), "
+       "stage (brand process), asset. :fact/basis marks :stated / :inferred / :assumed. "
+       "Start with brand_model_check, then brand_gaps; use brand_query for anything else."))
+
+(defn tools []
+  [["brand_model_check" "Load a brand model folder; report entity counts per kind and any problem (duplicate ids, unknown attributes, dangling refs)."
+    (schema {"model" s} ["model"])
+    (guarded (fn [a] (let [r (m/read-model (Path/expand (get a "model")))
+                           counts (frequencies (map (fn [e] (namespace (first (m/identity-of e)))) (:entities r)))]
+                       {:name (:name r) :files (:files r) :entities (count (:entities r)) :kinds counts
+                        :problems (m/problems r)})))]
+   ["brand_gaps" "The gaps the stage's rules find in a brand model, heaviest first: silent steps, late approvers, stall points, missing assets, phases the journey never reached, empty framework rows."
+    (schema {"model" s} ["model"])
+    (guarded (fn [a] (with-db (get a "model") (fn [st] {:gaps (:gaps (pj/stage-data st))}))))]
+   ["brand_coverage" "How much of a full customer-experience map the model fills: dimension × step/phase cells with state filled, thin, missing, empty or beyond."
+    (schema {"model" s} ["model"])
+    (guarded (fn [a] (with-db (get a "model")
+                        (fn [st] (select-keys (pj/stage-data st) [:coverage-pct :coverage-filled :coverage-cells :coverage])))))]
+   ["brand_entity" "One entity as the stage projects it (refs resolved to ids, persona lines folded in). kind: persona, step, worry, pillar, fear, phase, stage, asset, dimension, expression."
+    (schema {"model" s "kind" s "id" s} ["model" "kind" "id"])
+    (guarded (fn [a] (with-db (get a "model")
+                        (fn [st] (let [d (pj/stage-data st)
+                                       k (get {"persona" :personas "step" :steps "worry" :worries "pillar" :pillars "fear" :fears
+                                               "phase" :phases "stage" :stages "asset" :assets "dimension" :dimensions
+                                               "expression" :expressions} (get a "kind"))]
+                                   (or (first (filter (fn [e] (= (get a "id") (:id e))) (get d k)))
+                                       {:error (str "no " (get a "kind") " " (get a "id"))}))))))]
+   ["brand_query" "Run a read-only datom Datalog query, written as EDN, e.g. [:find ?name ?q :where [?c :presence/question ?q] [?c :presence/persona ?p] [?p :persona/name ?name]]. No (not …) clauses; use [(missing? $ ?e :attr)]."
+    (schema {"model" s "query" s} ["model" "query"])
+    (guarded (fn [a] (let [q (edn/read-string (get a "query"))]
+                       (when-not (and (vector? q) (= :find (first q))) (throw (ex-info "a query is an EDN vector starting with :find" {})))
+                       (with-db (get a "model") (fn [st] {:rows (datom/q q (:db st))})))))]
+   ["brand_new_model" "Start a new brand model folder (refuses an existing one): copies the stage schema and writes an index.edn and empty tx files to fill."
+    (schema {"model" s "name" s "template" {"type" "string" "description" "an existing model folder whose schema.edn to copy"}} ["model" "name" "template"])
+    (guarded (fn [a] (let [dir (Path/expand (get a "model"))
+                           files ["brand.edn" "journey.edn" "people.edn" "presence.edn" "worries.edn" "framework.edn" "process.edn"]]
+                       (when (File/exists? dir) (throw (ex-info (str dir " already exists") {})))
+                       (File/mkdir_p! dir)
+                       (File/write! (str dir "/schema.edn") (File/read! (str (Path/expand (get a "template")) "/schema.edn")))
+                       (File/write! (str dir "/index.edn") (pr-str {:name (get a "name") :schema "schema.edn" :tx files}))
+                       (doseq [f files] (File/write! (str dir "/" f) (str ";; " f " for " (get a "name") " — tx-data: a vector of entity maps\n[]\n")))
+                       {:created dir :files (into ["index.edn" "schema.edn"] files)})))]])
+
+(defn registry []
+  (mcp/registry-state {:tools (tools) :server-info {"name" "brand-stage" "version" "0.1.0"}
+                       :capabilities {"tools" {}} :instructions guide}))

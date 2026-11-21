@@ -1,0 +1,95 @@
+; serve.bl — a brand stage: a .bl.org deck over an EDN brand model.
+;
+;   bl serve serve.bl -- /abs/path/stage.bl.org
+;   PORT / HOST from the environment (work serve supplies them), else 4180 on 127.0.0.1.
+;   STAGE_KIT_DIR  the kit folder (web/, out/), default ~/projects/enchanted-skills/brand-stage/kit
+;
+; Routes  GET /                  the stage
+;         GET /api/stage.json    deck + projected model + coverage + gaps (rebuilt when a file changes)
+;         GET /api/model.edn     {:schema … :tx […]} — everything needed to spin up the same datom db
+;         GET /api/deck.bl.org   the deck source
+;         GET /out/*  /web/*     compiled client, styles, vendored three.js
+;
+; The deck and the model are re-read on each request and the datom db is
+; rebuilt only when their bytes change, so editing the .bl.org or an .edn
+; needs no restart. Kit code changes need `work restart NAME`.
+
+(ns stage.serve
+  (:require [web] [datom] [bl.json :as json] [clojure.edn]
+            [stage.model :as m] [stage.project :as pj] [stage.deck :as dk]))
+
+(def deck-path
+  (let [a (first (BeamLisp/argv))]
+    (when (nil? a) (throw (ex-info "usage: bl serve serve.bl -- DECK.bl.org" {})))
+    (Path/expand a)))
+
+(def kit (let [d (System/get_env "STAGE_KIT_DIR")]
+           (if (and d (not= d "")) d (Path/expand "~/projects/enchanted-skills/brand-stage/kit"))))
+
+(defn- model-dir [deck]
+  (let [d (:model deck)] (if (starts-with? d "/") d (Path/join (Path/dirname deck-path) d))))
+
+;; ── the cache: one datom db per distinct set of bytes ──────────────────
+(def cache (atom {:key nil :data nil :db nil}))
+
+(defn- sources []
+  (let [text (File/read! deck-path)
+        deck (dk/read-deck text)
+        dir (model-dir deck)
+        index (File/read! (str dir "/index.edn"))
+        files (cons "index.edn" (cons "schema.edn" (:tx (clojure.edn/read-string index))))
+        bytes (apply str text (map (fn [f] (File/read! (str dir "/" f))) files))]
+    {:deck deck :dir dir :key (erlang/phash2 bytes)}))
+
+(defn stage-data []
+  (let [{:keys [deck dir key]} (sources)]
+    (if (= key (:key @cache))
+      (:data @cache)
+      (let [s (m/load! dir)
+            data (assoc (pj/stage-data s) :deck deck :deck-problems (dk/problems deck))]
+        (when-let [old (:db @cache)] (try (datom/close! (:conn old)) (catch e nil)))
+        (reset! cache {:key key :data data :db s})
+        data))))
+
+(defn model-edn []
+  (let [{:keys [dir]} (sources)
+        r (m/read-model dir)]
+    (pr-str {:name (:name r) :schema (:schema r) :tx (:entities r)})))
+
+;; ── static files ───────────────────────────────────────────────────────
+(def types {"mjs" "text/javascript" "js" "text/javascript" "css" "text/css" "json" "application/json"
+            "html" "text/html; charset=utf-8" "svg" "image/svg+xml" "png" "image/png" "woff2" "font/woff2"})
+
+(defn- static [conn prefix dir]
+  (let [rel (subs (web/path conn) (count prefix))]
+    (if (or (includes? rel "..") (not (Regex/match? (Regex/compile! "^[A-Za-z0-9._/-]+$") rel)))
+      (web/text conn 404 "not found")
+      (let [p (str dir "/" rel)
+            ext (last (String/split rel "."))]
+        (if (File/exists? p)
+          (web/bytes (web/resp-header conn "cache-control" "no-cache") (get types ext "application/octet-stream") (File/read! p))
+          (web/text conn 404 "not found"))))))
+
+(defn router [conn]
+  (let [path (web/path conn) get? (= "get" (web/method conn))]
+    (cond
+      (and get? (= path "/")) (web/bytes (web/resp-header conn "cache-control" "no-cache") "text/html; charset=utf-8"
+                                         (File/read! (str kit "/web/index.html")))
+      (and get? (= path "/api/stage.json"))
+      (try (web/bytes (web/resp-header conn "cache-control" "no-store") "application/json" (json/encode (stage-data)))
+           (catch e (web/json conn 500 {:error (str (ex-message e))})))
+      (and get? (= path "/api/model.edn")) (web/bytes conn "application/edn; charset=utf-8" (model-edn))
+      (and get? (= path "/api/deck.bl.org")) (web/text conn (File/read! deck-path))
+      (and get? (starts-with? path "/out/")) (static conn "/out/" (str kit "/web/out"))
+      (and get? (starts-with? path "/web/")) (static conn "/web/" (str kit "/web"))
+      :else (web/text conn 404 "not found"))))
+
+(def port (let [p (System/get_env "PORT")] (if (and p (not= p "")) (erlang/binary_to_integer p) 4180)))
+(def ip
+  "work serve hands HOST=127.0.0.1; 0.0.0.0 is honoured, anything else stays on loopback."
+  (if (= "0.0.0.0" (System/get_env "HOST")) (tuple 0 0 0 0) (tuple 127 0 0 1)))
+
+;; Load every namespace (and build the db once) before web/serve pins this file.
+(println "stage:" deck-path "→" (count (:gaps (stage-data))) "gaps")
+(web/serve {:port port :ip ip :plug router :log :off})
+(println (str "stage: http://" (System/get_env "HOST") ":" port "/"))
