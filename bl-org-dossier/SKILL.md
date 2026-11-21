@@ -54,6 +54,12 @@ House taste it descends from: `~/code/undefine/omega/spikes/mobile/design-review
    passage changed elsewhere meanwhile is never overwritten: the page offers
    *Use theirs* or *Keep mine*. Without `DOSSIER_OWNER` the page only reads.
    After someone edited, re-read the file before acting on it.
+   A project host that composes its own page (its own `serve.bl` around
+   `dossier.page`) gets the same editing from `dossier.live`: `(live/open!
+   [file])` at top level, `(live/route conn file)` first in its handler, and
+   `(live/page conn file)` as `page-h`'s fourth argument. A page served under
+   `/x/` passes `{:prefix "/x/_live"}`; a host that expands includes sets each
+   node's `:src` to its own lines, or nil to keep the block closed.
 6. Read the answers:
    ```sh
    bl run ~/.claude/skills/bl-org-dossier/kit/answers.bl -- /abs/path/NAME.bl.org
