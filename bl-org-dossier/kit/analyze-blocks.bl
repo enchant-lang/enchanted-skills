@@ -1,0 +1,66 @@
+; analyze-blocks.bl — the block catalogue's static half, from the code.
+;
+;   bl run analyze-blocks.bl -- OUT.json DIR…
+;
+; Reads every Beam Lisp namespace under the DIRs (the kit's dossier/, a host's
+; own namespaces), and with system.inputs finds every function that dispatches
+; on (:lang x) of a parameter: the block renderers' switchboards, the kit's
+; and any host's. For each block type it names, the handlers' reads under
+; (:attrs x) are that block's parameters, and how the code uses each value
+; gives its control:
+;   compared with string literals  → "enum" with those values
+;   compared with "true"/"false"   → "boolean"
+;   parsed as a number             → "number"
+;   anything else                  → "text"
+; dossier.catalogue merges OUT.json with the blocks a folder actually uses.
+(ns analyze-blocks (:require [system.inputs :as in] [bl.json :as json]))
+
+(defn- ns-of [src]
+  (second (Regex/run (Regex/compile! "\\(ns\\s+(?:\\^:\\w+\\s+)?([\\w.-]+)") src)))
+
+(defn- sources [dirs]
+  (vec (for [d dirs
+             f (File/ls! d) :when (ends-with? f ".bl")
+             :let [src (File/read! (str d "/" f)) ns (ns-of src)] :when ns]
+         [ns src])))
+
+(defn- kind
+  "The control a parameter's use asks for. Comparisons with \"\" are blank
+   checks, not values; a default the code falls back to rides along."
+  [domain]
+  (let [lits (remove #(= "" %) (filter string? (:compared domain))) uses (:uses domain #{})
+        dflt (first (remove #(= "" %) (filter string? (:defaults domain))))]
+    (cond-> (cond
+              (or (contains? uses :boolean) (and (seq lits) (every? #(contains? #{"true" "false"} %) lits))) {"kind" "boolean"}
+              (contains? uses :number) {"kind" "number"}
+              (seq lits) {"kind" "enum" "values" (vec (sort (distinct (concat lits (when dflt [dflt])))))}
+              :else {"kind" "text"})
+      dflt (assoc "default" dflt))))
+
+(defn blocks
+  "{lang {\"handlers\" [fn …] \"params\" {key {\"kind\" …}}}} for `sources`."
+  [sources]
+  (let [own (into {} (mapcat (fn [[ns src]] (try (in/source ns src)
+                                                (catch e (println "skip" ns (let [s (str e)] (subs s 0 (min 160 (count s))))) {})))
+                             sources))
+        facts (in/compose own)
+        tables (for [[f fx] facts [on table] (:dispatch fx) :when (= [:lang] (:path on))] [f on table])]
+    (reduce
+      (fn [acc [f on table]]
+        (reduce (fn [acc [lang handlers]]
+                  (if-not (string? lang) acc
+                    (let [params (apply merge-with (fn [a b] (merge-with into a b))
+                                        {} (for [h handlers] (into {} (for [[p d] (in/parameters facts h 0 [:attrs]) :when (= 1 (count p))]
+                                                                        [(name (first p)) d]))))]
+                      (-> acc
+                          (update-in [lang "handlers"] (fnil (comp vec distinct into) []) handlers)
+                          (update-in [lang "params"] merge (into {} (for [[k d] params] [k (kind d)])))))))
+                acc table))
+      {} tables)))
+
+(let [[out & dirs] (vec (BeamLisp/argv))
+      t0 (erlang/monotonic_time :millisecond)
+      result (blocks (sources dirs))]
+  (File/write! out (json/encode result {:pretty 2}))
+  (println "blocks:" (count result) "types," (reduce + 0 (map #(count (get % "params")) (vals result))) "parameters in"
+           (- (erlang/monotonic_time :millisecond) t0) "ms →" out))

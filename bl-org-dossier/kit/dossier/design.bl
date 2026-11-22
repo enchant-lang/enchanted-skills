@@ -15,7 +15,7 @@
 ;   #+begin_motion :design forest       every motion token, playing
 
 (ns dossier.design
-  (:require [dossier.portable] [dossier.design.forest :as forest] [dossier.design.cassette :as cassette]
+  (:require [dossier.design.forest :as forest] [dossier.design.cassette :as cassette]
             [dossier.design.cari :as cari]
             [dossier.tone :as tone]))
 
@@ -31,9 +31,9 @@
    files styling `.design-NAME`, named by DOSSIER_DESIGN_CSS (comma-separated),
    read per page so a regenerated file shows at once."
   []
-  (let [paths (filter (fn [p] (and (not= "" p) (dossier.portable/file? p)))
-                      (map trim (split (or (dossier.portable/env "DOSSIER_DESIGN_CSS") "") ",")))]
-   (map (fn [p] (dossier.portable/read-file p)) paths)))
+  (let [paths (filter (fn [p] (and (not= "" p) (File/regular? p)))
+                      (map trim (split (or (System/get_env "DOSSIER_DESIGN_CSS") "") ",")))]
+   (map (fn [p] (File/read! p)) paths)))
 
 (defn- report-vars [language colors]
   (let [face (fn [k] (or (get language k) (:font language)))]
@@ -98,12 +98,12 @@
    `language` map at load (a host script calls this before serving), so the
    showcase blocks can draw it. Its CSS still comes from DOSSIER_DESIGN_CSS."
   [language]
-  (dossier.portable/registry-put! :dossier-languages
-    (assoc (or (dossier.portable/registry-get :dossier-languages) {}) (:name language) language)))
+  (Application/put_env :beam_lisp :dossier-languages
+    (assoc (or (Application/get_env :beam_lisp :dossier-languages) {}) (:name language) language)))
 
 (defn- lang-of [nd]
   (let [k (or (:design (:attrs nd)) "forest")]
-    (or (get languages k) (get (dossier.portable/registry-get :dossier-languages) k))))
+    (or (get languages k) (get (Application/get_env :beam_lisp :dossier-languages) k))))
 
 (defn- frame
   "A showcase block: drawn inside `design-NAME` so it wears the language."

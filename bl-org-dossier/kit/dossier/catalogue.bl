@@ -1,0 +1,101 @@
+; dossier/catalogue.bl — what the in-place editor can insert, and each block's
+; settings, for one document. No block declares anything:
+;
+;   static   every block type the renderers handle and the parameters each
+;            reads, from the CODE (system.inputs over the kit's and the
+;            host's namespaces, at build time → inplace-blocks.json):
+;            {lang {"handler" "ns/fn" "params" {key {"kind" k "values" […]}}}}
+;            kind: "enum" (compared with literals), "boolean", "number", "text"
+;   instances every block of this document and of its sibling dossiers: the
+;            first one of each type is its insert template (answers and
+;            reader notes removed), its attributes add to the parameters
+;   prose    paragraph, heading, list, table
+;
+; Served to editors as GET <prefix>/catalogue (dossier.live).
+(ns dossier.catalogue
+  (:require [dossier.org :as o] [dossier.attrs :as at] [bl.json :as json]))
+
+(def ^:private reader-keys #{"answer" "note" "at" "by"})
+
+(def ^:private prose
+  [{"lang" "paragraph" "label" "Paragraph" "hint" "Plain text" "template" "New paragraph."}
+   {"lang" "heading" "label" "Heading" "hint" "A section" "template" "* New section"}
+   {"lang" "subheading" "label" "Subheading" "hint" "A subsection" "template" "** New subsection"}
+   {"lang" "list" "label" "List" "hint" "Bulleted items" "template" "- First item\n- Second item"}
+   {"lang" "table" "label" "Table" "hint" "Rows and columns" "template" "| Column | Column |\n|--------+--------|\n| Value  | Value  |"}])
+
+(defn- label-of [lang]
+  (let [words (remove blank? (split (String/replace lang "_" " ") " "))]
+    (str (upper-case (subs (first words) 0 1)) (subs (join " " words) 1))))
+
+(defn static-blocks
+  "The build-time analysis next to the kit (and the host's, when it ships
+   one), merged: {lang {...}}."
+  [paths]
+  (reduce (fn [acc p]
+            (if (File/regular? p)
+              (merge-with (fn [a b] (update a "params" merge (get b "params"))) acc (try (json/decode (File/read! p)) (catch _ {})))
+              acc))
+          {} paths))
+
+(defn- template-of
+  "A block's source as a fresh template: reader answers removed, a fresh id."
+  [lines nd]
+  (let [src (subvec lines (:line nd) (:to nd))
+        head (reduce (fn [l k] (at/set-attr l k nil)) (first src) reader-keys)
+        head (if (get (:attrs nd) :id) (at/set-attr head "id" (str (:lang nd) "-new")) head)]
+    (join "\n" (cons head (rest src)))))
+
+(defn- instances
+  "{lang {:template :attrs {key #{values}}}} over the documents' texts, the
+   first text first."
+  [texts]
+  (reduce
+    (fn [acc text]
+      (let [doc (o/read-doc text {:review? false}) lines (:lines doc)]
+        (reduce (fn [acc nd]
+                  (if (and (= :block (:t nd)) (not (contains? #{"comment" "src" "example" "quote" "export"} (:lang nd))))
+                    (-> acc
+                        (update-in [(:lang nd) :template] #(or % (template-of lines nd)))
+                        (update-in [(:lang nd) :attrs]
+                                   (fn [m] (reduce (fn [m [k v]] (if (contains? reader-keys k) m (update m k (fnil conj #{}) v)))
+                                                   (or m {}) (:pairs nd)))))
+                    acc))
+                acc (:nodes doc))))
+    {} texts))
+
+(defn- param-of
+  "A parameter's control: its kind from the code, the values it is compared
+   with, its default, and (for text) the values this folder already uses, as
+   suggestions."
+  [static-param observed]
+  (let [kind (get static-param "kind" "text")
+        seen (sort (remove #(or (= "true" %) (> (count %) 40)) observed))]
+    (cond-> {"kind" kind}
+      (get static-param "default") (assoc "default" (get static-param "default"))
+      (= "enum" kind) (assoc "values" (vec (distinct (concat (get static-param "values") seen))))
+      (and (= "text" kind) (<= 1 (count (distinct seen)) 8)) (assoc "suggest" (vec (distinct seen))))))
+
+(defn build
+  "The catalogue for document `path` (its text `text`): {\"blocks\" [entry …]}."
+  [path text static]
+  (let [dir (Path/dirname path)
+        siblings (->> (try (File/ls! dir) (catch _ []))
+                      (filter #(ends-with? % ".bl.org"))
+                      (map #(Path/join dir %))
+                      (remove #(= (Path/expand %) (Path/expand path)))
+                      (sort) (take 40)
+                      (keep #(try (let [t (File/read! %)] (when (< (count t) 2000000) t)) (catch _ nil))))
+        seen (instances (cons text siblings))
+        langs (sort (distinct (concat (keys seen) (keys static))))]
+    {"blocks"
+     (vec (concat prose
+                  (for [lang langs
+                        :let [inst (get seen lang) st (get static lang)
+                              keys* (sort (distinct (concat (keys (:attrs inst)) (keys (get st "params")))))]]
+                    {"lang" lang
+                     "label" (label-of lang)
+                     "hint" (if (seq keys*) (join " · " (take 4 (remove #(contains? reader-keys %) keys*))) "block")
+                     "template" (or (:template inst) (str "#+begin_" lang "\n#+end_" lang))
+                     "params" (into {} (for [k keys* :when (not (contains? reader-keys k))]
+                                         [k (param-of (get-in st ["params" k]) (get-in inst [:attrs k]))]))})))}))

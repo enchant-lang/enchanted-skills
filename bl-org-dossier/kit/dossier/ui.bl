@@ -7,7 +7,7 @@
 ; never spliced as HTML, so everything a document says is escaped.
 
 (ns dossier.ui
-  (:require [dossier.portable] [dossier.org :as o]))
+  (:require [dossier.org :as o]))
 
 ; ─── inline markup ──────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@
   [s]
   (if (or (nil? s) (= "" s))
     (list)
-    (for [piece (dossier.portable/re-split inline-re s (list (tuple :include_captures true)))
+    (for [piece (Regex/split inline-re s (list (tuple :include_captures true)))
           :when (not= "" piece)]
       (let [inner (when (> (count piece) 2) (subs piece 1 (dec (count piece))))]
         (cond
@@ -125,7 +125,7 @@
   [s]
   (if (or (nil? s) (= "" s))
     (list)
-    (for [piece (dossier.portable/re-split icon-re s (list (tuple :include_captures true)))
+    (for [piece (Regex/split icon-re s (list (tuple :include_captures true)))
           :when (not= "" piece)]
       (if (and (starts-with? piece "@") (contains? icon-paths (subs piece 1)))
         (ico (subs piece 1))
@@ -142,7 +142,7 @@
   (for [chunk (partition-by blank? lines) :when (not (blank? (first chunk)))]
     [:p (md (join " " (map trim chunk)))]))
 
-(defn- n [x] (str (dossier.portable/round x)))
+(defn- n [x] (str (erlang/round x)))
 
 (defn- wrap-words
   "Greedy word wrap of `s` to lines of at most `width` characters."
@@ -564,7 +564,7 @@
        views (keep (fn [line] (when (starts-with? (trim line) "view ")
          (let [xs (mapv trim (split (subs (trim line) 5) "|"))] {:id (first xs) :title (nth xs 1 (first xs))}))) (:body b))
        start (or (:start a) (:id (first views)))
-       url (with-params (if (includes? src "?") src (str src "?view=" (dossier.portable/url-encode (or start "")))))]
+       url (with-params (if (includes? src "?") src (str src "?view=" (URI/encode_www_form (or start "")))))]
   (if-not safe? [:p.warning "Screen hosts must use a same-origin path."]
    [:figure {:class (str "screen-graph screen-source" (design-class a)) :id (str "screen-graph-" (:id a))
              :data-source-id (:id a) :data-source-start url
@@ -687,7 +687,7 @@
                       (let [m (Regex/run (Regex/compile! "^note\\s+([^:]+):\\s*(.*)$") t)
                             who (vec (map trim (String/split (nth m 1) ",")))
                             x1 (- (apply min (map x who)) 70) x2 (+ (apply max (map x who)) 70)
-                            ls (wrap-words (nth m 2) (max 20 (dossier.portable/round (/ (- x2 x1) 6.6))))
+                            ls (wrap-words (nth m 2) (max 20 (erlang/round (/ (- x2 x1) 6.6))))
                             h (+ 12 (* 15 (count ls)))]
                         (-> acc (update :out conj
                                         [:g.sq-note
@@ -702,7 +702,7 @@
                                 x1 (x from) x2 (x to)
                                 self? (= x1 x2)
                                 span (if self? 150 (max 120 (- (max x1 x2) (min x1 x2))))
-                                ls (wrap-words label (max 18 (dossier.portable/round (/ span 6.8))))
+                                ls (wrap-words label (max 18 (erlang/round (/ span 6.8))))
                                 lift (* 14 (dec (count ls)))
                                 y (+ y lift)
                                 kind (case arrow "=>" "baton" "-->" "reply" "call")]
@@ -730,7 +730,7 @@
 (defn graph-h [b]
   (let [rows (o/rows-of (:body b))
         nodes (for [r rows :when (starts-with? (first r) "node ")]
-                (let [[c rr] (map (fn [s] (dossier.portable/parse-int (trim s))) (String/split (nth r 3 "0,0") ","))]
+                (let [[c rr] (map (fn [s] (erlang/binary_to_integer (trim s))) (String/split (nth r 3 "0,0") ","))]
                   {:id (trim (subs (first r) 5)) :label (nth r 1 "") :sub (nth r 2 "") :col c :row rr :tone (nth r 4 "")}))
         edges (for [r rows :when (starts-with? (first r) "edge ")]
                 (let [m (Regex/run (Regex/compile! "^edge\\s+(\\S+)\\s*(->|<->|--)\\s*(\\S+)$") (first r))]
@@ -786,7 +786,7 @@
 (def ^:private doc-re (Regex/compile! "(\\{\\+.*?\\+\\}|\\{-.*?-\\}|\\{~.*?~\\}|\\{!.*?!\\}|‹[^›]+›|\\^\\d+)"))
 
 (defn- doc-inline [s]
-  (for [piece (dossier.portable/re-split doc-re s (list (tuple :include_captures true))) :when (not= "" piece)]
+  (for [piece (Regex/split doc-re s (list (tuple :include_captures true))) :when (not= "" piece)]
     (let [inner (fn [] (subs piece 2 (- (count piece) 2)))]
       (cond (starts-with? piece "{+") [:ins (mdi (inner))]
             (starts-with? piece "{-") [:del (mdi (inner))]
@@ -1042,7 +1042,7 @@
        (when (seq views)
          [:nav {:class "explorer-views" :aria-label "Explorer views"}
           (for [v views]
-            [:a {:href (str src "?q=" (dossier.portable/url-encode (:query v))) :target id} (mdi (:label v))])])
+            [:a {:href (str src "?q=" (URI/encode_www_form (:query v))) :target id} (mdi (:label v))])])
        [:iframe {:name id :src src :title (or (:title a) "Component Explorer")
                  :loading "lazy" :height (or (:height a) "1000") :style "width:100%;border:0;background:transparent"}]])))
 

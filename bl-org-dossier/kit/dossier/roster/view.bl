@@ -1,5 +1,5 @@
 ; Pure, source-backed roster renderers. Work, proof and the next action share one place.
-(ns dossier.roster.view (:require [dossier.portable] [dossier.ui :as ui] [dossier.witness :as witness] [dossier.roster.model :as model]))
+(ns dossier.roster.view (:require [dossier.ui :as ui] [dossier.witness :as witness] [dossier.roster.model :as model]))
 
 (def state-labels {"DONE" "Done" "DROP" "Dropped" "DOING" "In progress" "NEXT" "Next" "WAIT" "Waiting" "BLOCKED" "Blocked" "TODO" "Planned" "REVIEW" "Review"})
 (defn- item-state [item] (if (and (:blocked? item) (not= "WAIT" (:state item))) "BLOCKED" (:state item)))
@@ -160,7 +160,7 @@
       [:div [:strong (if (:done? item) "Recorded as done" "No result recorded")]
        [:p (if (:done? item) "See the source for the completion record." "The next step is still open.")]
        (when-let [commits (get-in item [:props "COMMIT"])]
-        [:div.or-source-chips (for [commit (take 3 (dossier.portable/re-split (Regex/compile! "\\s+") commits))] [:code commit])])]])
+        [:div.or-source-chips (for [commit (take 3 (Regex/split (Regex/compile! "\\s+") commits))] [:code commit])])]])
     (preview-h item)]
    [:aside.or-action-column
     (when (:next item) [:section.or-next
@@ -191,7 +191,7 @@
  roster-h [node]
  (let [a (:attrs node) data (:data node) items (model/group-items (:items data) (get a :group-by "AREA"))
        titles (into {} (map (fn [item] [(:id item) (:title item)]) items))
-       items (mapv (fn [item] (assoc item :dependency-titles titles)) items) who (set (dossier.portable/re-split (Regex/compile! "\\s+") (get a :who "othman hotel")))
+       items (mapv (fn [item] (assoc item :dependency-titles titles)) items) who (set (Regex/split (Regex/compile! "\\s+") (get a :who "othman hotel")))
        start (or (:start a) (:id (first (filter (fn [i] (not (:done? i))) items))) (:id (first items)))
        complete (count (filter (fn [i] (and (:done? i) (not (:dropped? i)))) items))
        open (count (remove :done? items)) dropped (count (filter :dropped? items))

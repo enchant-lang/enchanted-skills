@@ -16,7 +16,16 @@
 ;; at /x/ uses "/x/_live" (the client resolves `_live/` against the page URL).
 ;; :owner — the Tailscale login that edits, default DOSSIER_OWNER.
 (ns dossier.live
-  (:require [web] [dossier.storage :as storage] [dossier.answer :as ans]))
+  (:require [web] [dossier.storage :as storage] [dossier.answer :as ans] [dossier.catalogue :as catalogue]
+            [bl.json :as json]))
+
+(def ^:private kit-dir
+  (or (System/get_env "DOSSIER_KIT_DIR") (Path/dirname (Path/dirname (BeamLisp.Loader/source_path "dossier.live")))))
+
+(def ^:private inplace-dir
+  "The compiled in-place editor (build-inplace-client.sh): Beam Lisp → ES
+   modules, the kit's own renderer included."
+  (str kit-dir "/inplace-client"))
 
 (defn- load-api []
   (try
@@ -61,15 +70,38 @@
 
 (defn- options [p opts]
   {:file p :prefix (or (:prefix opts) "/_live")
+   :inplace (when (File/regular? (str inplace-dir "/ns/dossier.editor-client.mjs")) "inplace/ns/dossier.editor-client.mjs")
    :editor? ((:owner-editor (:api (state))) (or (:owner opts) (System/get_env "DOSSIER_OWNER")))
    :client (fn [conn] (or (ans/handle (web/req-header conn "tailscale-user-login") (System/get_env "DOSSIER_HANDLE")) "owner"))})
+
+(defn- kit-route
+  "The kit's own routes under the prefix, for editors: the in-place editor's
+   modules and the catalogue of what it can insert."
+  [conn p o]
+  (let [prefix (:prefix o) path (web/path conn)]
+    (when (and (= "get" (web/method conn)) (starts-with? path (str prefix "/")))
+      (let [op (subs path (inc (count prefix)))]
+        (cond
+          (not (or (starts-with? op "inplace/") (= op "catalogue"))) nil
+          (not ((:editor? o) conn)) (web/json conn 403 {:error "Only this document's owner edits it here."})
+          (= op "catalogue")
+          (web/json (web/resp-header conn "cache-control" "no-store")
+                    (catalogue/build p (source p) (catalogue/static-blocks [(str kit-dir "/inplace-blocks.json")
+                                                                           (str (Path/dirname p) "/inplace-blocks.json")])))
+          :else
+          (let [rel (subs op 8) file (str inplace-dir "/" rel)]
+            (if (and (not (includes? rel "..")) (ends-with? rel ".mjs") (File/regular? file))
+              (web/bytes (web/resp-header conn "cache-control" "no-cache") "text/javascript; charset=utf-8" (File/read! file))
+              (web/text conn 404 "not found"))))))))
 
 (defn route
   "The /_live/* routes for one file, or nil (any other path, or not live)."
   ([conn path] (route conn path {}))
   ([conn path opts]
    (when-let [p (live-file path)]
-     (((:handler (:api (state))) (:store (state)) (options p opts)) conn))))
+     (let [o (options p opts)]
+       (or (kit-route conn p o)
+           (((:handler (:api (state))) (:store (state)) o) conn))))))
 
 (defn page
   "page-h's `live` argument, or nil when the file is not live. It names the

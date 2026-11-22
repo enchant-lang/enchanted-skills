@@ -14,7 +14,7 @@
 ; screen follows; change the procedure and every screen drawn from it does.
 
 (ns dossier.runview
-  (:require [dossier.portable] [dossier.ui :as ui] [ensemble.format :as f] [ensemble.run :as r]))
+  (:require [dossier.ui :as ui] [ensemble.format :as f] [ensemble.run :as r]))
 
 (defn- cells [l] (vec (map trim (String/split l "|"))))
 
@@ -26,7 +26,7 @@
                          [(String/replace role "_" " ") (vec who)]))
         load (into {} (for [l body :when (starts-with? (trim l) "load ") c (cells (subs (trim l) 5))
                             :let [[who n] (String/split c (Regex/compile! "\\s+"))] :when n]
-                        [who (dossier.portable/parse-int n)]))]
+                        [who (erlang/binary_to_integer n)]))]
     {:members (vec (distinct (remove (fn [p] (contains? #{"omega" "harness"} p)) (apply concat (vals roles)))))
      :roles roles :load load}))
 
@@ -44,7 +44,13 @@
                     :asked-change {:output target :note x}
                     {:output target}))))))
 
-(defn- av [p] [:span {:class (str "rv-av a" (mod (dossier.portable/hash p) 6)) :title p} (upper-case (subs p 0 1))])
+(defn- tone-of
+  "One of six avatar tones for a name: the same on the server and in the
+   page's renderer (erlang/phash2 has no browser twin)."
+  [p]
+  (mod (reduce (fn [h c] (mod (+ (* 31 h) c) 1000003)) 7 (String/to_charlist (str p))) 6))
+
+(defn- av [p] [:span {:class (str "rv-av a" (tone-of p)) :title p} (upper-case (subs p 0 1))])
 
 (defn- dot [state] [:i {:class (str "rv-dot " (name state)) :title (name state)}])
 

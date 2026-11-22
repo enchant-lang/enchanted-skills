@@ -1,0 +1,61 @@
+(ns inplace-test
+  (:require [dossier.org :as o] [dossier.attrs :as at] [dossier.catalogue :as catalogue] [dossier.page :as pg]))
+
+;; ── attributes change in place ────────────────────────────────────────────
+
+(def head "#+begin_decision :id d1 :title \"Sell direct?\" :status open :weight 3")
+
+(deftest set-attr-changes-only-that-value
+  (is (= "#+begin_decision :id d1 :title \"Sell direct?\" :status taken :weight 3" (at/set-attr head "status" "taken")))
+  (is (= "#+begin_decision :id d1 :title \"Sell direct?\" :status \"not yet\" :weight 3" (at/set-attr head "status" "not yet"))
+      "a value that needs quotes gets them, where it stands")
+  (is (= "#+begin_decision :id d1 :title \"Who sells?\" :status open :weight 3" (at/set-attr head "title" "Who sells?")))
+  (is (= "#+begin_decision :id d1 :title \"Sell direct?\" :status open :weight 3 :owner amine" (at/set-attr head "owner" "amine"))
+      "a new key is appended")
+  (is (= "#+begin_decision :id d1 :title \"Sell direct?\" :weight 3" (at/set-attr head "status" nil)) "nil removes")
+  (is (= head (at/set-attr head "missing" nil)))
+  (is (= "#+begin_x :flag :k v" (at/set-attr "#+begin_x :flag :k old" "k" "v")) "a flag before it is untouched"))
+
+(deftest escape-at-spells-text-for-where-it-lands
+  (let [src (str head "\nBody line.\n#+end_decision")
+        title-from (+ (count "#+begin_decision :id d1 :title \"")) title-to (+ title-from (count "Sell direct?"))
+        status-from (+ 1 (count "#+begin_decision :id d1 :title \"Sell direct?\" :status")) status-to (+ status-from 4)
+        body-from (+ 1 (count head))]
+    (is (= "Say \\\"yes\\\"" (at/escape-at src title-from title-to "Say \"yes\"")) "inside quotes: escaped")
+    (is (= "\"not yet\"" (at/escape-at src status-from status-to "not yet")) "unquoted value gains quotes")
+    (is (= "taken" (at/escape-at src status-from status-to "taken")))
+    (is (= "Body: \"x\"" (at/escape-at src body-from (+ body-from 4) "Body: \"x\"")) "the body is text")))
+
+;; ── the page's renderer reads the same nodes without comment anchors ─────
+
+(def text "#+title: T\n\n* One\n\nPara *bold*.\n\n#+begin_comment :id c1 :by a\nA note.\n#+end_comment\n\n#+begin_ask :id q1 :title \"Why?\"\nBecause.\n#+end_ask\n")
+
+(deftest read-doc-without-review-keeps-lines-and-nodes
+  (let [full (o/read-doc text) bare (o/read-doc text {:review? false})
+        shape (fn [doc] (mapv #(select-keys % [:t :line :to :lang :text :title]) (:nodes doc)))]
+    (is (= (shape full) (shape bare)) "same nodes at the same lines")
+    (is (nil? (:review-target (first (filter #(= :block (:t %)) (:nodes bare))))) "no anchors")
+    (is (= "" (nth (:lines bare) 6)) "comment blocks are blanked in both")))
+
+;; ── the catalogue: what the folder uses, plus what the code reads ────────
+
+(deftest catalogue-merges-the-folder-and-the-code
+  (let [dir (str (System/tmp_dir!) "/inplace-cat-" (System/unique_integer (list :positive)))
+        a (str dir "/a.bl.org") b (str dir "/b.bl.org")]
+    (File/mkdir_p! dir)
+    (File/write! a text)
+    (File/write! b "#+begin_job :id j1 :title \"Ship\" :answer spot-on :by x\nDo it.\n#+end_job\n")
+    (try
+      (let [static {"decision" {"params" {"status" {"kind" "enum" "values" ["open" "taken"]}}}
+                    "ask" {"params" {"title" {"kind" "text"}}}}
+            cat (catalogue/build a text static)
+            by (into {} (for [e (get cat "blocks")] [(get e "lang") e]))]
+        (is (contains? by "paragraph") "prose kinds are always offered")
+        (is (= "#+begin_ask :id ask-new :title \"Why?\"\nBecause.\n#+end_ask" (get-in by ["ask" "template"]))
+            "this document's instance, with a fresh id")
+        (is (= "#+begin_job :id job-new :title \"Ship\"\nDo it.\n#+end_job" (get-in by ["job" "template"]))
+            "a sibling's instance, reader answers removed")
+        (is (= {"kind" "enum" "values" ["open" "taken"]} (get-in by ["decision" "params" "status"])) "a block known only to the code")
+        (is (= "#+begin_decision\n#+end_decision" (get-in by ["decision" "template"])))
+        (is (not (contains? (get-in by ["job" "params"]) "answer")) "reader keys are not settings"))
+      (finally (File/rm_rf! dir)))))

@@ -13,7 +13,7 @@
 ; to a sub-row rather than hiding its words. The same facts are also a list in
 ; order. Selection is local view state; only the feedback form writes. Pure.
 
-(ns dossier.lifetime (:require [dossier.portable] [dossier.ui :as ui] [dossier.claims :as claims]))
+(ns dossier.lifetime (:require [dossier.ui :as ui] [dossier.claims :as claims]))
 
 (def labels
  {"en" {:months "months" :month "month" :span "Span" :handoff "Handoff" :marker "Marker" :facts "In order"
@@ -36,7 +36,7 @@
   "`2026-03` → an absolute month number, nil when malformed."
   [s]
   (when-let [m (and (string? s) (Regex/run (Regex/compile! "^(\\d{4})-(\\d{2})$") (trim s)))]
-    (let [y (dossier.portable/parse-int (nth m 1)) mo (dossier.portable/parse-int (nth m 2))]
+    (let [y (erlang/binary_to_integer (nth m 1)) mo (erlang/binary_to_integer (nth m 2))]
       (when (and (>= mo 1) (<= mo 12)) (+ (* 12 y) (dec mo))))))
 
 (defn- fmt [L m] (str (nth (:names L) (rem m 12)) " " (quot m 12)))
@@ -83,7 +83,7 @@
 (defn- reserve
   "Months a span occupies on its row: its duration, or its label's width at the narrowest scale."
   [it]
-  (max (inc (- (:m1 it) (:m0 it))) (dossier.portable/ceil (/ (+ 22 (* 6.8 (count (:label it)))) px-month))))
+  (max (inc (- (:m1 it) (:m0 it))) (erlang/ceil (/ (+ 22 (* 6.8 (count (:label it)))) px-month))))
 
 (defn- rows-of
   "Greedy sub-rows for one lane's spans: {span-id row}."
@@ -108,7 +108,7 @@
     {:lanes (:lanes lanes) :height (+ 8 (:y lanes))
      :lane (into {} (map (fn [l] [(:id l) l]) (:lanes lanes)))}))
 
-(defn- pct [x] (str (/ (dossier.portable/round (* 10000 x)) 100.0) "%"))
+(defn- pct [x] (str (/ (erlang/round (* 10000 x)) 100.0) "%"))
 
 (defn- when-text [L it]
   (if (= "span" (:kind it))

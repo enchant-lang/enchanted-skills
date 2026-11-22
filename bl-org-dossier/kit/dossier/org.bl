@@ -83,12 +83,16 @@
                      :else l))))
 
 (defn read-doc
-  "{:meta {…} :nodes [node …]} for the text of a .bl.org file."
-  [text]
-  (let [prepared (review/prepare text) lines (:lines prepared)]
+  "{:meta {…} :nodes [node …]} for the text of a .bl.org file. With
+   {:review? false} the nodes carry no comment anchors (the page's own
+   renderer, which edits text and never anchors comments)."
+  ([text] (read-doc text {}))
+  ([text opts]
+  (let [review? (get opts :review? true)
+        prepared (review/prepare text review?) lines (:lines prepared)]
     (loop [ss (sp/spans lines :org {:headings? true}) out [] meta {}]
       (if (empty? ss)
-        (review/attach {:meta meta :nodes out :lines lines} prepared)
+        (if review? (review/attach {:meta meta :nodes out :lines lines} prepared) {:meta meta :nodes out :lines lines})
         (let [s (first ss) k (:kind s)]
           (cond
             (= k :heading)
@@ -137,7 +141,7 @@
 
             :else
             (recur (rest ss) (conj out {:t :code :line (:from s) :to (:to s) :lang "org" :body (join "\n" (slice lines (:from s) (:to s)))})
-                   meta)))))))
+                   meta))))))))
 
 (defn rows-of
   "The `a | b | c` rows of a block body, blank and `#` lines skipped."

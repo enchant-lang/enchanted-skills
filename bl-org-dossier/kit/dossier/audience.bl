@@ -5,7 +5,7 @@
 ; A heading left with nothing under it goes too, and screens keep their views
 ; but lose the component catalog behind them. Pure.
 
-(ns dossier.audience (:require [dossier.portable]))
+(ns dossier.audience)
 
 (def default-hide "explorer :internal: :interne:")
 
@@ -72,4 +72,4 @@
   "`DOSSIER_MODE=client`: this server only ever shows the client's reading — no
    source, no answers, no review thread, no component explorer."
   []
-  (= "client" (dossier.portable/env "DOSSIER_MODE")))
+  (= "client" (System/get_env "DOSSIER_MODE")))

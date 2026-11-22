@@ -65,3 +65,35 @@
                          line (sort (keys changes)))
         added (write-attrs (for [k ["answer" "note" "at" "by"] :when (some? (get changes k))] [k (get changes k)]))]
     (if (blank? added) stripped (str stripped " " added))))
+
+(defn set-attr
+  "`line` with attribute `k` (a string) set to `v` IN PLACE: an existing key
+   keeps its position and only its value's bytes change; a new key is
+   appended; nil removes it. Every other byte stays as the author wrote it."
+  [line k v]
+  (let [re (Regex/compile! (str "(\\s+):" k "(?:\\s+(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\\s:\"]\\S*))?(?=\\s|$)"))
+        m (Regex/run re line (list (tuple :return :index)))]
+    (cond
+      (and (nil? m) (nil? v)) line
+      (nil? m) (str line " " (write-attrs [[k v]]))
+      :else (let [[start len] (let [t (first m)] [(erlang/element 1 t) (erlang/element 2 t)])
+                  head (erlang/binary_part line 0 start)
+                  tail (erlang/binary_part line (+ start len) (- (erlang/byte_size line) start len))
+                  lead (let [t (second m)] (erlang/binary_part line (erlang/element 1 t) (erlang/element 2 t)))]
+              (if (nil? v) (str head tail) (str head lead (write-attrs [[k v]]) tail))))))
+
+(defn escape-at
+  "How `text` must be spelled to replace bytes [from,to) of block source `src`
+   (omega.projection's :escape). On the `#+begin_` header: inside a quoted
+   value, escape \\ and \"; an unquoted value that now needs quotes gets them.
+   Elsewhere the text is the text."
+  [src from to text]
+  (let [nl (or (let [h (binary/match src "\n")] (when (not= :nomatch h) (erlang/element 1 h))) (erlang/byte_size src))]
+    (if-not (and (some? (header-lang src)) (< to (inc nl)) (> from 0))
+      text
+      (let [prev (erlang/binary_part src (dec from) 1)
+            next (if (< to (erlang/byte_size src)) (erlang/binary_part src to 1) "")]
+        (cond
+          (and (= "\"" prev) (= "\"" next)) (-> text (String/replace "\\" "\\\\") (String/replace "\"" "\\\""))
+          (some? (Regex/run (Regex/compile! "[\\s\":]") text)) (quote-value text)
+          :else text)))))

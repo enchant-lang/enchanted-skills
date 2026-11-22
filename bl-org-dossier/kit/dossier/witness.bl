@@ -1,18 +1,18 @@
 ; Recorded Scenario Runner claims and their actual browser frames, inline in Org.
 ; Reading is confined to enrich/media-path; rendering receives projected data.
-(ns dossier.witness (:require [dossier.portable] [bl.json :as json] [dossier.ui :as ui]))
+(ns dossier.witness (:require [bl.json :as json] [dossier.ui :as ui]))
 
 (defn- token? [value]
  (and (string? value) (some? (Regex/run (Regex/compile! "^[A-Za-z0-9_-]+$") value))))
 (defn- local-prefix [value]
  (when (and (string? value) (starts-with? value "/") (not (starts-with? value "//"))
             (not (includes? value "\\")) (not (includes? value "?")) (not (includes? value "#")))
-  (dossier.portable/trim-trailing value "/")))
+  (String/trim_trailing value "/")))
 
 (defn- read-record [path]
- (if-not (dossier.portable/file? path) {:state "missing"}
+ (if-not (File/regular? path) {:state "missing"}
   (try
-   (let [record (json/decode (dossier.portable/read-file path)) claims (get record "verdicts")]
+   (let [record (json/decode (File/read! path)) claims (get record "verdicts")]
     (if (and (map? record) (vector? claims)
              (every? (fn [claim] (and (map? claim) (erlang/is_integer (get claim "step"))
                                       (pos? (get claim "step")) (string? (get claim "msg")))) claims))
@@ -22,8 +22,8 @@
 (defn- enrich-node [node directory]
  (let [a (:attrs node) id (:id a) run (:run a)
        prefix (local-prefix (or (:src a) "/witness-media"))
-       root (when (:frames a) (dossier.portable/path-expand (dossier.portable/path-join directory (:frames a))))
-       loaded (when run (read-record (dossier.portable/path-expand (dossier.portable/path-join directory run))))
+       root (when (:frames a) (Path/expand (Path/join directory (:frames a))))
+       loaded (when run (read-record (Path/expand (Path/join directory run))))
        record (:record loaded) claims (get record "verdicts") world (get record "world")
        state (cond (not (and (token? id) prefix run)) "invalid"
                    (:state loaded) (:state loaded)
@@ -36,7 +36,7 @@
    {:state state :world world :recorded-at (get record "recorded-at") :frame-root root
     :claims (mapv (fn [claim]
               (let [step (get claim "step") file (str "frame-" step ".png")
-                    available? (and (= world "browser") root (dossier.portable/file? (dossier.portable/path-join root file)))]
+                    available? (and (= world "browser") root (File/regular? (Path/join root file)))]
                {:step step :message (get claim "msg") :verdict (get claim "verdict")
                 :available? (boolean available?)
                 :src (when available? (str prefix "/" id "/" file "?v=" (or (get record "recorded-at") "recorded")))}))
@@ -54,7 +54,7 @@
   (when-let [node (first (filter (fn [n] (and (= "witness" (:lang n)) (= id (:id (:attrs n))))) (:nodes doc)))]
    (let [data (:data (enrich-node node directory))]
     (when (some (fn [claim] (and (:available? claim) (= file (str "frame-" (:step claim) ".png")))) (:claims data))
-     (dossier.portable/path-join (:frame-root data) file))))))
+     (Path/join (:frame-root data) file))))))
 
 (def labels {"witnessed" "Browser witnessed" "proven" "Model proven" "refuted" "Refuted"
              "unknown" "Unverified" "missing" "No recorded run" "invalid" "Invalid run declaration"})

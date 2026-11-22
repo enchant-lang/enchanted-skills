@@ -91,24 +91,9 @@
                               (when (contains? designs asked) (str "design=" asked))])))
     doc))
 
-; PROTOTYPE (prototype/rich-edit): with RICH_EDIT_DIR (a `bl js build
-; dossier.editor-client` output), serve it and load it on the page.
-(defn- rich-edit [html]
-  (if (System/get_env "RICH_EDIT_DIR")
-    (String/replace html "</body>" "<script type=\"module\" src=\"/rich-edit/ns/dossier.editor-client.mjs\"></script></body>")
-    html))
-
-(defn- rich-edit-route [conn]
-  (when-let [dir (System/get_env "RICH_EDIT_DIR")]
-    (when (and (= "get" (web/method conn)) (starts-with? (web/path conn) "/rich-edit/"))
-      (let [rel (subs (web/path conn) 11) p (Path/join dir rel)]
-        (if (and (not (includes? rel "..")) (File/regular? p))
-          (web/bytes (web/resp-header conn "cache-control" "no-cache") "text/javascript; charset=utf-8" (File/read! p))
-          (web/text conn 404 "not found"))))))
-
 (defn- full-page [conn text]
   (sharing/decorate
-    (rich-edit (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js") (live-page conn)))))
+    (str "<!doctype html>" (h/hiccup->html (pg/page-h (reading conn text) (asset "style.css") (asset "live.js") (live-page conn))))
     conn (or (System/get_env "DOSSIER_KIT_DIR") (Path/expand "~/.claude/skills/bl-org-dossier/kit"))))
 
 (defn- publication-options [conn text]
@@ -157,7 +142,6 @@
 
 (defn router [conn]
  (or (client-only conn)
-     (rich-edit-route conn)
      (when-not (audience/locked?) (live/route conn doc-path))
      (explorer-route conn)
      (design-route conn)
