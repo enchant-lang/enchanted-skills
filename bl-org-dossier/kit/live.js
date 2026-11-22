@@ -229,6 +229,9 @@ const paintFrameTheme = (doc) => { try { if (doc?.documentElement) doc.documentE
       if (r.rev === rev && !force) return;
       if (busy || editing()) return;
       const d = await (await fetch('doc' + location.search, { cache: 'no-store' })).json();
+      // An editor may have opened a passage while the new body was fetched:
+      // never swap it away mid-edit (its close asks for a refresh again).
+      if (editing()) return;
       const y = scrollY; $('#doc').innerHTML = d.html; rev = d.rev;
       const design = $('#doc .app2')?.dataset.design;
       if (design) document.documentElement.dataset.design = design;

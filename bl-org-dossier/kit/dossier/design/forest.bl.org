@@ -349,7 +349,9 @@ this module (the work spine's roster item R9), the direction of the check
 flips.
 
 #+begin_src beam-lisp :id parity
-(def app-root (Path/expand "~/code/products/ora-hub/team-machine/assets"))
+;; A page (the kit's renderer compiled for the browser) has no files: there
+;; the checkout is simply absent and nothing is checked.
+(def app-root (try (Path/expand "~/code/products/ora-hub/team-machine/assets") (catch _ nil)))
 
 (def sources
   "token → [stylesheet, custom property] in the shipped app."
@@ -360,10 +362,11 @@ flips.
    :inset ["ora-components.css" "--ora-inset"] :focus ["ora-components.css" "--ora-focus"]})
 
 (defn shipped [[file prop]]
-  (let [path (str app-root "/" file)]
-    (when (File/exists? path)
-      (let [m (Regex/run (Regex/compile! (str prop "\\s*:\\s*(#[0-9a-fA-F]{3,8})")) (File/read! path))]
-        (when m (lower-case (nth m 1)))))))
+  (when app-root
+    (let [path (str app-root "/" file)]
+      (when (File/exists? path)
+        (let [m (Regex/run (Regex/compile! (str prop "\\s*:\\s*(#[0-9a-fA-F]{3,8})")) (File/read! path))]
+          (when m (lower-case (nth m 1))))))))
 
 (def checked (into {} (for [[k src] sources :let [v (shipped src)] :when v] [k [(get light k) v]])))
 (def drift (into {} (filter (fn [[_ [ours theirs]]] (not= ours theirs)) checked)))

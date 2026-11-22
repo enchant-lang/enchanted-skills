@@ -1,0 +1,1023 @@
+{
+  "ask": {
+    "handlers": [
+      "dossier.ui/ask-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "options": {
+        "default": "Yes|No",
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "assumptions": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/assumptions-h"
+    ],
+    "params": {
+      "people": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "bars": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/bars-h"
+    ],
+    "params": {
+      "format": {
+        "default": "num",
+        "kind": "enum",
+        "values": [
+          "count",
+          "days",
+          "hours",
+          "mad",
+          "mad1",
+          "months",
+          "num",
+          "pct",
+          "ratio",
+          "share"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "chain": {
+    "handlers": [
+      "dossier.notebook/chain-h"
+    ],
+    "params": {}
+  },
+  "claims": {
+    "handlers": [
+      "dossier.claims/claims-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "ids": {
+        "kind": "text"
+      },
+      "lang": {
+        "kind": "enum",
+        "values": [
+          "fr"
+        ]
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "src": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Claims",
+        "kind": "text"
+      }
+    }
+  },
+  "compare": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/compare-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "controls": {
+    "handlers": [
+      "dossier.notebook/controls-h"
+    ],
+    "params": {
+      "inputs": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "decision": {
+    "handlers": [
+      "dossier.ui/decision-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "status": {
+        "default": "proposed",
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "desk": {
+    "handlers": [
+      "dossier.ui/desk-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "caption": {
+        "kind": "text"
+      },
+      "design": {
+        "kind": "text"
+      },
+      "firm": {
+        "default": "Cabinet Atlas",
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "job": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      },
+      "url": {
+        "default": "knowledger · cabinet-atlas",
+        "kind": "text"
+      }
+    }
+  },
+  "drivers": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/drivers-h"
+    ],
+    "params": {
+      "depth": {
+        "kind": "enum",
+        "values": [
+          "?"
+        ]
+      },
+      "stop": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      },
+      "value": {
+        "kind": "text"
+      }
+    }
+  },
+  "explorer": {
+    "handlers": [
+      "dossier.ui/explorer-h"
+    ],
+    "params": {
+      "height": {
+        "default": "1000",
+        "kind": "text"
+      },
+      "id": {
+        "default": "components",
+        "kind": "text"
+      },
+      "src": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Component Explorer",
+        "kind": "text"
+      }
+    }
+  },
+  "film": {
+    "handlers": [
+      "dossier.film/film-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "src": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "fr": {
+    "handlers": [],
+    "params": {}
+  },
+  "funnel": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/funnel-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "graph": {
+    "handlers": [
+      "dossier.ui/graph-h"
+    ],
+    "params": {
+      "title": {
+        "default": "graph",
+        "kind": "text"
+      }
+    }
+  },
+  "honest": {
+    "handlers": [
+      "dossier.ui/callout-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "horizons": {
+    "handlers": [
+      "dossier.horizon/horizons-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "caption": {
+        "kind": "text"
+      },
+      "design": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "now": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "job": {
+    "handlers": [
+      "dossier.ui/job-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "claude": {
+        "kind": "text"
+      },
+      "claude-label": {
+        "default": "Agent path",
+        "kind": "text"
+      },
+      "codex": {
+        "kind": "text"
+      },
+      "codex-label": {
+        "default": "Codex does",
+        "kind": "text"
+      },
+      "decision": {
+        "kind": "text"
+      },
+      "decision-label": {
+        "default": "Baton decides",
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "screen": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "lede": {
+    "handlers": [
+      "dossier.ui/lede-h"
+    ],
+    "params": {}
+  },
+  "ledger": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/ledger-h"
+    ],
+    "params": {
+      "group": {
+        "kind": "text"
+      },
+      "table": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      },
+      "where": {
+        "kind": "text"
+      }
+    }
+  },
+  "lifetime": {
+    "handlers": [
+      "dossier.lifetime/lifetime-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "end": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "lang": {
+        "kind": "enum",
+        "values": [
+          "fr"
+        ]
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "start": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Lifetime",
+        "kind": "text"
+      }
+    }
+  },
+  "limit": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/limit-h"
+    ],
+    "params": {
+      "format": {
+        "default": "num",
+        "kind": "enum",
+        "values": [
+          "count",
+          "days",
+          "hours",
+          "mad",
+          "mad1",
+          "months",
+          "num",
+          "pct",
+          "ratio",
+          "share"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "matrix": {
+    "handlers": [
+      "dossier.ui/matrix-h"
+    ],
+    "params": {}
+  },
+  "measure": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/measure-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "milestones": {
+    "handlers": [
+      "dossier.milestones/milestones-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "start": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Milestones",
+        "kind": "text"
+      }
+    }
+  },
+  "motion": {
+    "handlers": [
+      "dossier.design/motion-h"
+    ],
+    "params": {
+      "design": {
+        "default": "forest",
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "night": {
+    "handlers": [
+      "dossier.design/night-h"
+    ],
+    "params": {
+      "design": {
+        "default": "forest",
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "note": {
+    "handlers": [
+      "dossier.ui/callout-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "palette": {
+    "handlers": [
+      "dossier.design/palette-h"
+    ],
+    "params": {
+      "design": {
+        "default": "forest",
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "principles": {
+    "handlers": [
+      "dossier.ui/principles-h"
+    ],
+    "params": {}
+  },
+  "procedure": {
+    "handlers": [
+      "dossier.ui/procedure-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "makes": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Procedure",
+        "kind": "text"
+      }
+    }
+  },
+  "quote": {
+    "handlers": [
+      "dossier.ui/paras"
+    ],
+    "params": {}
+  },
+  "range": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/range-h"
+    ],
+    "params": {
+      "format": {
+        "default": "num",
+        "kind": "enum",
+        "values": [
+          "count",
+          "days",
+          "hours",
+          "mad",
+          "mad1",
+          "months",
+          "num",
+          "pct",
+          "ratio",
+          "share"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      },
+      "value": {
+        "kind": "text"
+      }
+    }
+  },
+  "roadmap": {
+    "handlers": [
+      "dossier.ui/roadmap-h"
+    ],
+    "params": {
+      "id": {
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "rosetta": {
+    "handlers": [
+      "dossier.ui/rosetta-h"
+    ],
+    "params": {}
+  },
+  "run": {
+    "handlers": [
+      "dossier.page/phone-h",
+      "dossier.runview/run-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "as": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "caption": {
+        "kind": "text"
+      },
+      "design": {
+        "kind": "text"
+      },
+      "id": {
+        "default": "run",
+        "kind": "text"
+      },
+      "job": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "procedure": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "theme": {
+        "kind": "enum",
+        "values": [
+          "dark"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "scenarios": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/scenario-buttons",
+      "dossier.notebook/paras-of"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "schema": {
+    "handlers": [
+      "dossier.ui/schema-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Schema",
+        "kind": "text"
+      }
+    }
+  },
+  "screen": {
+    "handlers": [
+      "dossier.ui/screens-h"
+    ],
+    "params": {}
+  },
+  "screen_graph": {
+    "handlers": [
+      "dossier.ui/screen-graph-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "caption": {
+        "kind": "text"
+      },
+      "catalog": {
+        "kind": "text"
+      },
+      "design": {
+        "kind": "text"
+      },
+      "explorer": {
+        "kind": "text"
+      },
+      "graph-label": {
+        "default": "SCREEN GRAPH",
+        "kind": "text"
+      },
+      "help": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "map-title": {
+        "default": "Every screen. Every way through.",
+        "kind": "text"
+      },
+      "mode": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "src": {
+        "kind": "text"
+      },
+      "start": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Shared product screen",
+        "kind": "text"
+      },
+      "workbench-label": {
+        "default": "Interactive prototype",
+        "kind": "text"
+      }
+    }
+  },
+  "sequence": {
+    "handlers": [
+      "dossier.ui/sequence-h"
+    ],
+    "params": {
+      "title": {
+        "default": "sequence",
+        "kind": "text"
+      }
+    }
+  },
+  "shape": {
+    "handlers": [
+      "dossier.design/shape-h"
+    ],
+    "params": {
+      "design": {
+        "default": "forest",
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "stats": {
+    "handlers": [
+      "dossier.ui/stats-h"
+    ],
+    "params": {}
+  },
+  "terms": {
+    "handlers": [
+      "dossier.ui/terms-h"
+    ],
+    "params": {}
+  },
+  "trajectory": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/trajectory-h"
+    ],
+    "params": {
+      "format": {
+        "default": "mad",
+        "kind": "enum",
+        "values": [
+          "count",
+          "days",
+          "hours",
+          "mad",
+          "mad1",
+          "months",
+          "pct",
+          "ratio",
+          "share"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "type": {
+    "handlers": [
+      "dossier.design/type-h"
+    ],
+    "params": {
+      "design": {
+        "default": "forest",
+        "kind": "text"
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "warning": {
+    "handlers": [
+      "dossier.ui/callout-h"
+    ],
+    "params": {
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "waterfall": {
+    "handlers": [
+      "dossier.notebook/head-h",
+      "dossier.notebook/waterfall-h"
+    ],
+    "params": {
+      "format": {
+        "default": "mad",
+        "kind": "enum",
+        "values": [
+          "count",
+          "days",
+          "hours",
+          "mad",
+          "mad1",
+          "months",
+          "pct",
+          "ratio",
+          "share"
+        ]
+      },
+      "title": {
+        "kind": "text"
+      }
+    }
+  },
+  "witness": {
+    "handlers": [
+      "dossier.witness/witness-h"
+    ],
+    "params": {
+      "answer": {
+        "kind": "text"
+      },
+      "at": {
+        "kind": "text"
+      },
+      "feedback": {
+        "kind": "text"
+      },
+      "id": {
+        "kind": "text"
+      },
+      "note": {
+        "kind": "text"
+      },
+      "note-placeholder": {
+        "kind": "text"
+      },
+      "scope": {
+        "kind": "text"
+      },
+      "submit-label": {
+        "kind": "text"
+      },
+      "title": {
+        "default": "Recorded scenario",
+        "kind": "text"
+      }
+    }
+  }
+}

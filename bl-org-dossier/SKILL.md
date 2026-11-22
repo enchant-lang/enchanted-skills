@@ -46,14 +46,32 @@ House taste it descends from: `~/code/undefine/omega/spikes/mobile/design-review
    second, without reload and without a restart. Editing the kit's `.bl` code, or
    re-pinning Omega, needs `work restart NAME`.
 
-   **The owner edits the page in place.** Press `E` (or the *Edit* button in the
-   live bar), then click or tap any passage: it opens where it stands as its exact
-   Org source, in the same type, saves as you pause, and closes back into its
-   rendering with `Esc`, *Done*, or a click elsewhere. `↑`/`↓` at the first/last
-   line walk to the neighbouring block. Semantic blocks open as their source. A
-   passage changed elsewhere meanwhile is never overwritten: the page offers
-   *Use theirs* or *Keep mine*. Without `DOSSIER_OWNER` the page only reads.
-   After someone edited, re-read the file before acting on it.
+   **The owner edits the page itself.** Press `E` (or the *Edit* button in the
+   live bar), then click or tap any text: it becomes editable where it stands,
+   with no source shown. What you type is written into exactly the Org bytes
+   behind that text (bold, links and block syntax around it stay as written),
+   checked by rendering the block again, and saved as you pause; `Esc` or a
+   click elsewhere ends it. Beside the hovered block, `+` inserts any block the
+   folder or the kit's renderers know, and `⋮⋮` moves, duplicates, deletes
+   (with undo) or opens the block's **settings**: a form generated from what its
+   renderer reads (choices for values the code compares with, toggles,
+   numbers, text with the folder's values as suggestions). This works for every
+   block, the kit's and a host's own, with nothing declared by the block. Text
+   the page computes (no source behind it) opens as its exact Org source
+   instead, as does *Edit source* in the `⋮⋮` menu. A passage changed elsewhere
+   meanwhile is never overwritten: the page offers *Use theirs* or *Keep mine*.
+   Without `DOSSIER_OWNER` the page only reads. After someone edited, re-read
+   the file before acting on it.
+
+   The editor is the kit's own reader and renderer compiled to JavaScript with
+   Omega's `omega.live-doc.inplace` (`build-inplace-client.sh` →
+   `inplace-client/`, loaded for the owner only). The block catalogue's static
+   half comes from the code: `bl run analyze-blocks.bl -- inplace-blocks.json
+   DIR…` reads every function that dispatches on `(:lang x)` (a `case` or a
+   literal table of renderers) with Enchant's `system.inputs`, and lists each
+   block's parameters with the control their use asks for. Run it for the kit
+   (`dossier/`) after changing renderers, and for a host's own namespaces
+   into `inplace-blocks.json` beside its documents.
    A project host that composes its own page (its own `serve.bl` around
    `dossier.page`) gets the same editing from `dossier.live`: `(live/open!
    [file])` at top level, `(live/route conn file)` first in its handler, and
