@@ -1,7 +1,7 @@
 ; An Org outline projected as work. Source headings and drawers remain authoritative.
-(ns dossier.roster.model (:require [dossier.org :as org]))
+(ns dossier.roster.model (:require [dossier.portable] [dossier.org :as org]))
 
-(defn words [s] (vec (remove blank? (Regex/split (Regex/compile! "\\s+") (trim (str (or s "")))))))
+(defn words [s] (vec (remove blank? (dossier.portable/re-split (Regex/compile! "\\s+") (trim (str (or s "")))))))
 (defn- declaration [doc]
  (let [tokens (words (get-in doc [:meta :todo] "TODO NEXT DOING WAIT REVIEW BLOCKED | DONE DROP"))
        tokens (mapv (fn [s] (String/replace s (Regex/compile! "\\(.*\\)$") "")) tokens)

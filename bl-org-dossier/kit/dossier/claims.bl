@@ -14,7 +14,7 @@
 ; A claim with no screen is an open promise and stays visibly so. Filters and
 ; the screen dialog are local view state; only the feedback form writes. Pure.
 
-(ns dossier.claims (:require [dossier.ui :as ui]))
+(ns dossier.claims (:require [dossier.portable] [dossier.ui :as ui]))
 
 (def labels
  {"en" {:covered "shown on a screen" :open "no screen yet" :opens "open promises" :all "All"
@@ -95,7 +95,7 @@
           [:li {:class (tone-class p)}
            [:span.cl-ph (lab names p)]
            [:span.cl-meter {:role "img" :aria-label (str (lab names p) " : " kc " / " (count cs) " " (:covered L))}
-            [:i {:style (str "width:" (erlang/round (/ (* 100 kc) (max 1 (count cs)))) "%")}]]
+            [:i {:style (str "width:" (dossier.portable/round (/ (* 100 kc) (max 1 (count cs)))) "%")}]]
            [:span.cl-frac (str kc " / " (count cs))]]))]
      (when (< k n) [:p.cl-opens [:b (str (- n k))] " " (:opens L)])]))
 

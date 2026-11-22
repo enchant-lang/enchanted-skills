@@ -1,5 +1,5 @@
 ; Native Org comments and durable source anchors. Pure: no browser code or IO.
-(ns dossier.review.model (:require [dossier.compat.spans :as sp] [dossier.attrs :as attrs]))
+(ns dossier.review.model (:require [dossier.portable] [dossier.compat.spans :as sp] [dossier.attrs :as attrs]))
 
 (defn- field [line]
   (Regex/run (Regex/compile! "^- ([A-Za-z-]+) :: (.*)$") line))
@@ -40,7 +40,7 @@
         raw (collect lines parts 0)
         comments (loop [cs raw seen {} out []]
                    (if (empty? cs) out
-                     (let [c (first cs) hash (str (erlang/phash2 (:body c))) n (inc (get seen hash 0))]
+                     (let [c (first cs) hash (str (dossier.portable/hash (:body c))) n (inc (get seen hash 0))]
                        (recur (rest cs) (assoc seen hash n)
                          (conj out (assoc c :id (or (:id c) (str "manual-" hash "-" n))))))))
         clean (reduce (fn [ls c] (reduce (fn [ls i] (assoc ls i "")) ls (range (:from c) (:to c)))) lines comments)]
@@ -49,7 +49,7 @@
 (defn- node-key [nd]
   (if-let [id (get-in nd [:attrs :id])] (str "block:" id)
     (let [stable (if (:body nd) (assoc nd :body (vec (remove blank? (:body nd)))) nd)]
-      (str "text:" (erlang/phash2 (select-keys stable [:t :lang :title :text :items :head :rows :body :code :review-scope]))))))
+      (str "text:" (dossier.portable/hash (select-keys stable [:t :lang :title :text :items :head :rows :body :code :review-scope]))))))
 
 (defn- node-label [nd]
   (let [label (str (or (get-in nd [:attrs :title]) (:title nd) (:text nd)

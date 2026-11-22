@@ -1,0 +1,201 @@
+; dossier/editor_client.bl — edit the page itself, in the browser, in Beam Lisp.
+;
+; PROTOTYPE (prototype/rich-edit). Compiled by `bl js build` with the kit:
+; the page is parsed and each node rendered AGAIN here by the same
+; dossier.org / dossier.page functions the server used, so this client knows,
+; for every text run on screen, which source bytes it came from (dossier.codec).
+; In edit mode a click on such a run makes the block editable in place: no
+; source shown. Each change is spliced into exactly those bytes, verified by
+; re-rendering, and saved through Omega's live routes (POST block, with the
+; old text as the guard). Anything it cannot map falls through to Omega's
+; source editor, untouched.
+(ns ^:js dossier.editor-client
+  (:require [dossier.org :as o] [dossier.page :as pg] [dossier.codec :as c]))
+
+(def state (atom {}))
+
+(defn- log! [& xs] (.log js/console (bl->js (apply str "[rich-edit] " xs))))
+
+(defn- each-node [list f] (dotimes [i (.-length list)] (f (.item list i))))
+
+(defn- base []
+  (let [cfg (.parse js/JSON (or (.-liveDoc (.-dataset (.-body js/document))) "{}"))
+        prefix (or (.-prefix cfg) "_live")]
+    (.-href (js/URL. (str prefix "/") (.-href js/location)))))
+
+(defn- fetch-json [url opts]
+  (-> (js/fetch url opts) (.then (fn [r] (.then (.json r) (fn [j] #js {:ok (.-ok r) :status (.-status r) :body j}))))))
+
+; ─── the DOM's text, in the order text-runs walks hiccup ────────────────────
+
+(defn- skipped? [node root]
+  (loop [p (.-parentNode node)]
+    (cond (or (nil? p) (identical? p root)) false
+          (contains? #{"svg" "style" "script" "SVG" "STYLE" "SCRIPT"} (.-nodeName p)) true
+          :else (recur (.-parentNode p)))))
+
+(defn- dom-texts
+  "JS array of the element's non-blank text nodes outside svg/style/script."
+  [el]
+  (let [w (.createTreeWalker js/document el 4) out #js []]
+    (loop []
+      (when-let [n (.nextNode w)]
+        (when (and (not (blank? (.-data n))) (not (skipped? n el))) (.push out n))
+        (recur)))
+    out))
+
+(defn- flat [texts] (let [s (atom "")] (dotimes [i (.-length texts)] (swap! s str (.-data (aget texts i)))) @s))
+
+(defn- starts-of
+  "Flat offsets where each run starts, plus the end."
+  [runs]
+  (reduce (fn [acc r] (conj acc (+ (peek acc) (.-length (:text r))))) [0] runs))
+
+; ─── per node: runs, alignment, and the DOM's agreement with them ───────────
+
+(defn- node-at [line] (first (filter #(= line (:line %)) (:nodes (:doc @state)))))
+
+(defn- runs-of [nd] (c/align (c/node-source (:lines @state) nd) (c/text-runs (pg/node-h nd))))
+
+(defn- mapping
+  "{:nd :runs :starts} when the element's DOM text is exactly the runs'
+   text (the server and this client drew the same thing), else nil."
+  [el]
+  (let [src (.-src (.-dataset el)) line (when src (js/parseInt (first (split src ":")) 10))
+        nd (when line (node-at line))]
+    (when-not nd (log! "no node at " src))
+    (when nd
+      (let [runs (runs-of nd) want (apply str (map :text runs)) have (flat (dom-texts el))]
+        (when (not= want have)
+          (let [n (min (.-length want) (.-length have))
+                i (loop [i 0] (if (and (< i n) (= (.charAt want i) (.charAt have i))) (recur (inc i)) i))]
+            (log! "unmapped " src " " (:t nd) " " (:lang nd) " at " i ": render «" (.slice want (max 0 (- i 20)) (+ i 30)) "» page «" (.slice have (max 0 (- i 20)) (+ i 30)) "»")))
+        (when (= want have)
+          {:nd nd :runs runs
+           :starts (starts-of runs)})))))
+
+(defn- run-at
+  "The run index whose text holds flat offsets [p, q] (an insertion at a
+   boundary belongs to the run it touches that is aligned)."
+  [m p q]
+  (let [starts (:starts m) n (count (:runs m))]
+    (first (for [i (range n)
+                 :let [a (nth starts i) b (nth starts (inc i))]
+                 :when (and (<= a p) (<= q b) (:src (nth (:runs m) i)))]
+             i))))
+
+(declare mapping-for)
+
+; ─── an edit session on one block ───────────────────────────────────────────
+
+(defn- say! [el tone why]
+  (.setAttribute el "data-rich-edit" tone)
+  (set! (.-title el) (or why "")))
+
+(defn- commit!
+  "Diff the DOM against the last committed text; splice, verify, save."
+  [el]
+  (let [{:keys [m committed busy]} (:session @state)
+        now (flat (dom-texts el))]
+    (when busy (swap! state assoc-in [:session :again] true))
+    (when (and (not busy) (not= now committed))
+      ; UTF-16 units throughout (.-length/.charAt/.slice), as run starts are
+      (let [cl (.-length committed) nl (.-length now) n (min cl nl)
+            p (loop [i 0] (if (and (< i n) (= (.charAt committed i) (.charAt now i))) (recur (inc i)) i))
+            s (loop [k 0] (if (and (< k (- n p)) (= (.charAt committed (- cl 1 k)) (.charAt now (- nl 1 k)))) (recur (inc k)) k))
+            oe (- cl s) ne (- nl s)
+            i (run-at m p oe)]
+        (if (nil? i)
+          (say! el "refused" "This change spans formatting; open the source (double-click) for it.")
+          (let [r (nth (:runs m) i) a (nth (:starts m) i)
+                new-text (str (.slice (:text r) 0 (- p a)) (.slice now p ne) (.slice (:text r) (- oe a)))
+                nd (:nd m) before (c/node-source (:lines @state) nd)
+                res (c/edit-run (:lines @state) nd i new-text)]
+            (log! "commit p=" p " oe=" oe " ne=" ne " run " i " «" (:text r) "» → «" new-text "» ok=" (:ok res))
+            (if-not (:ok res)
+              (say! el "refused" (str "Kept as typed but not saved: " (name (:why res))))
+              (do (say! el "saving" nil)
+                  (swap! state assoc-in [:session :busy] true)
+                  (-> (fetch-json (str (base) "block")
+                                  #js {:method "POST" :headers #js {"content-type" "application/json"}
+                                       :body (.stringify js/JSON #js {:from (:line nd) :before (bl->js before) :text (bl->js (:src res))})})
+                      (.then (fn [r]
+                               (if (.-ok r)
+                                 (let [lines (:lines @state)
+                                       lines' (vec (concat (subvec lines 0 (:line nd)) (split (:src res) "\n") (subvec lines (:to nd))))
+                                       doc (o/read-doc (join "\n" lines'))]
+                                   (swap! state assoc :lines lines' :doc doc)
+                                   (swap! state update :session assoc :committed now
+                                          :m (assoc (mapping-for doc lines' (:line nd) el) :el el))
+                                   (say! el "saved" nil))
+                                 (say! el "refused" (str "Server refused: " (.-reason (.-body r)))))
+                               (let [again (get-in @state [:session :again])]
+                                 (swap! state update :session #(when % (assoc % :busy false :again false)))
+                                 (when (and again (:session @state)) (commit! el)))
+                               nil)))))))))))
+
+(defn- mapping-for [doc lines line el]
+  (let [nd (first (filter #(= line (:line %)) (:nodes doc)))
+        runs (c/align (c/node-source lines nd) (c/text-runs (pg/node-h nd)))]
+    {:nd nd :runs runs :starts (starts-of runs)}))
+
+(defn- close! []
+  (when-let [{:keys [el timer]} (:session @state)]
+    (js/clearTimeout timer)
+    (commit! el)
+    (.removeAttribute el "contenteditable")
+    (swap! state dissoc :session)
+    ; no page refresh: every saved change was verified to render exactly as
+    ; the page now shows it. (A refresh here races the next session.)
+    nil))
+
+(defn- open! [el m]
+  (when-let [s (:session @state)] (when-not (identical? (:el s) el) (close!)))
+  (when-not (:session @state)
+    (.setAttribute el "contenteditable" "plaintext-only")
+    (say! el "editing" nil)
+    (swap! state assoc :session {:el el :m m :committed (flat (dom-texts el))})
+    (.addEventListener el "input"
+      (fn [_] (when-let [t (:timer (:session @state))] (js/clearTimeout t))
+              (swap! state assoc-in [:session :timer] (js/setTimeout (fn [] (commit! el) nil) 350)) nil))
+    (.addEventListener el "keydown"
+      (fn [e] ; page shortcuts (Omega's E toggle …) must not eat typed keys
+        (.stopPropagation e)
+        (cond (= "Escape" (.-key e)) (do (.preventDefault e) (.blur el))
+                    (= "Enter" (.-key e)) (.preventDefault e)) nil))
+    (.addEventListener el "blur" (fn [_] (js/setTimeout (fn [] (close!) nil) 0) nil))))
+
+(defn- editing? [] (.hasAttribute (.-documentElement js/document) "data-live-edit"))
+
+(defn- on-pointer [e]
+  (when (and (editing?) (:doc @state))
+    (let [el (.closest (.-target e) "[data-src]")]
+      (when (and el (not (.closest (.-target e) "a,button,input,textarea,select,summary,svg")))
+        (when-let [s (:session @state)]
+          (when-not (.-isConnected (:el s)) (swap! state dissoc :session)))
+        (if-let [s (:session @state)]
+          (when (identical? (:el s) el) (.stopPropagation e))
+          (when-let [m (mapping el)]
+            (.stopPropagation e)
+            (open! el m)))))))
+
+(defn- load! []
+  (-> (fetch-json (str (base) "block?from=0&to=1000000") #js {})
+      (.then (fn [r]
+               (if (.-ok r)
+                 (let [text (js->bl (.-text (.-body r))) doc (o/read-doc text)]
+                   (pg/doc-h doc)
+                   (swap! state assoc :lines (vec (split text "\n")) :doc doc :rev (js->bl (.-rev (.-body r))))
+                   (.setAttribute (.-documentElement js/document) "data-rich-edit" "ready")
+                   (log! (count (:nodes doc)) " nodes mapped from source"))
+                 (log! "source unavailable: " (.-status r)))
+               nil))))
+
+(defn ^:export start []
+  (.addEventListener js/document "mousedown" (fn [e] (on-pointer e) nil) true)
+  (.addEventListener js/document "click" (fn [e] (when (:session @state) (when (.closest (.-target e) "[contenteditable]") (.stopPropagation e))) nil) true)
+  (.addEventListener js/document "dossier:refreshed"
+    (fn [_] (load!) nil))
+  (load!))
+
+(start)

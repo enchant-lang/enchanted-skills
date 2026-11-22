@@ -1,0 +1,97 @@
+#+title: Rich editing for dossiers — prototype findings
+#+date: 2026-11-22
+#+branch: prototype/rich-edit
+
+Goal: Notion-like editing of rendered dossiers (click the text, type, no
+source shown; inserts and settings from a dynamic catalogue), working for
+every present and future kit and block with nothing done to the blocks,
+written in Beam Lisp compiled to JS rather than JS blobs.
+
+* What was built (prototype quality, this branch)
+
+| file                              | what it proves                                        |
+|-----------------------------------+-------------------------------------------------------|
+| kit/dossier/portable.bl           | one place for host primitives the renderer needs      |
+| kit/js-overlay/dossier/portable.bl| its browser twin, in BL over JS interop               |
+| kit/dossier/render_client.bl      | the whole kit renderer, compiled to JS                |
+| kit/dossier/probe.bl              | zero-annotation field discovery by probe rendering    |
+| kit/dossier/codec.bl              | align rendered text to source bytes; splice; verify   |
+| kit/dossier/editor_client.bl      | the in-place editor, BL compiled to JS                |
+| kit/serve.bl (RICH_EDIT_DIR)      | serves and loads the compiled client                  |
+| kit/prototype-evidence/           | harnesses, browser test, screenshot                   |
+
+* Measurements (corpus: 54 real dossiers, 688 KB, cocompany + TMN + electrimaroc)
+
+** P1 — the kit's renderer runs in the browser, compiled from BL
+- 296 unresolved names at first; 7 after routing ~40 call sites through
+  dossier.portable; 0 with 6 stubs (bl.json, interop, ensemble.format, the
+  three literate design languages).
+- 52/54 documents render identically on BEAM and in JS (after normalising
+  attribute order and comment anchors). The 2 others reach stubbed
+  namespaces (bl.json/encode in notebook controls; ensemble procedures).
+- Bundle: 29 modules, 3.5 MB unminified; build 18–25 s.
+- Whole-document render in JS: 115 ms–4.3 s (BEAM: 7–750 ms).
+  Per block (what the editor re-renders): p50 2–3 ms, p95 ≤ 200 ms,
+  max 500 ms (big graphs / notebook models) → re-render prose per
+  keystroke; debounce heavy blocks.
+
+** P2 — probe rendering finds editable fields with no annotations
+- 65 block languages probed, 42 of them project-defined (final_*,
+  editorial_*, meeting_map…), none annotated.
+- Body-line segments: 85 % render as text (edit in place), 6 % attribute,
+  6 % structural (a control), 2 % renderer error, 1 % ignored.
+- Header attributes: 57 % text, 24 % attribute-only (href, src, id → popover),
+  13 % ignored (settings), 7 % structural.
+- Prose nodes: 92 % text (rest are node types not probed).
+- Low: graph / explorer / screen_graph (ids, edges, routes) → they need a
+  diagram-aware editor or the source.
+
+** P3 — codec: write only the bytes behind the text, verify by re-render
+- 66 % of text runs (62 % of characters) align to source bytes. Zero for
+  blocks drawing text from data or other files (scenarios, ledger, measure,
+  controls, compare) → popover/source.
+- 4,226 trial edits: 91 % verified. 99–100 % for para, list, table,
+  rosetta, terms, stats, note, explorer; 97 % headings. Failures cluster
+  where the same source text is drawn twice (milestones, ask, decision):
+  verification must accept mirrored runs changing together.
+- Block headers re-serialised: 404/482 byte-identical, 78 lose/gain quotes
+  → attribute edits must splice the value bytes, never re-serialise.
+
+** P4 — the editor in the browser (BL → JS), on a copy of final/rapport
+- 34/36 checks pass, desktop and phone: paragraph, heading, callout title
+  (a header attribute), rosetta cell, stats row segment, terms, a bold run
+  inside *…*. Each opens in place (no textarea), saves through Omega's
+  POST block, and the file diff touches only that node's lines with every
+  markup character intact. Phone taps on rosetta/terms (horizontally
+  scrolled tables) did not open — to investigate.
+- Client ready 1.8–4.5 s after load (parse + doc-h of the whole file in JS).
+- Bugs found and fixed on the way: JS callbacks must return nil (BL maps
+  refused by interop); `nth` on strings absent in JS (use JS string ops);
+  Omega's E shortcut eats typed "e" (stop propagation; Omega should ignore
+  contenteditable); saves must be serialised; no page refresh after a
+  verified edit (it raced the next session).
+
+** P5 — Enchant live.edit
+- Reuse its pure BL: registry, capabilities/arguments, extensions/build,
+  commands/catalogue (slash/turn-into/custom entries), projection hiccup
+  conventions, input/plan.
+- Do not adopt its document/session/authority (JSON model, refuses external
+  edits) nor host.mjs/ui.mjs (1,840 lines of hand-written JS).
+
+** Catalogue (slash menu) without annotations
+- 74 block languages used in the corpus; 42 are not literals anywhere in the
+  kit. A static catalogue would miss most → harvest at runtime: block types
+  whose render is not the <pre> fallback; templates from existing instances
+  (this document, sibling dossiers of the host, kit examples).
+
+* Upstream items found
+- Enchant JS leaves missing: erlang/round, ceil, floor, binary_to_integer/1,2,
+  binary_to_float, phash2, math/pow, log10, calendar dates, Regex/split,
+  URI.encode_www_form, String.trim_trailing/2, System.get_env (→ nil).
+  With them, dossier.portable and js-overlay go away.
+- Enchant JS Regex: strip PCRE (*UTF8)/(*UCP) verbs.
+- Enchant js.build: resolve literate .bl.org namespaces (design languages).
+- Enchant: bl.json compilable to JS (JSON.parse/stringify).
+- Ensemble: ensemble.format portable (crypto sha only).
+- Omega live-doc client: E shortcut and click handling must ignore
+  contenteditable targets.
