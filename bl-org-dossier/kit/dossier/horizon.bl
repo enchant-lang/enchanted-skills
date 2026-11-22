@@ -19,11 +19,11 @@
 ; someday edge, the quiet nudge toward a date.
 
 (ns dossier.horizon
-  (:require [dossier.ui :as ui]))
+  (:require [dossier.portable] [dossier.ui :as ui]))
 
 (defn- day [s]
-  (let [[y m d] (map (fn [x] (erlang/binary_to_integer x)) (String/split (trim s) "-"))]
-    (calendar/date_to_gregorian_days y m d)))
+  (let [[y m d] (map (fn [x] (dossier.portable/parse-int x)) (String/split (trim s) "-"))]
+    (dossier.portable/days y m d)))
 
 (defn- cells [l] (vec (map trim (String/split l "|"))))
 
@@ -34,11 +34,11 @@
    :goals (vec (for [l body :when (starts-with? (trim l) "goal ")
                      :let [[h title date prog] (cells (subs (trim l) 5))]]
                  {:horizon h :title title :day (when (and date (not (blank? date))) (day date)) :date date
-                  :progress (when prog (let [[a b] (String/split prog "/")] [(erlang/binary_to_integer a) (erlang/binary_to_integer b)]))}))})
+                  :progress (when prog (let [[a b] (String/split prog "/")] [(dossier.portable/parse-int a) (dossier.portable/parse-int b)]))}))})
 
 (def W 640) (def L 92) (def R 40) (def BH 34) (def GAP 74)
 
-(defn- n [x] (str (/ (erlang/round (* 10 x)) 10.0)))
+(defn- n [x] (str (/ (dossier.portable/round (* 10 x)) 10.0)))
 
 (defn- x-of [band d]
   (let [span (max 1 (- (:end band) (:start band)))

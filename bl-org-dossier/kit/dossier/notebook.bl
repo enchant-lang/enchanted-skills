@@ -18,15 +18,15 @@
 ; expressions and opens any figure's formula on click. Pure, except `with-imports`.
 
 (ns dossier.notebook
-  (:require [dossier.ui :as ui] [dossier.org :as o] [bl.json :as json]))
+  (:require [dossier.portable] [dossier.ui :as ui] [dossier.org :as o] [bl.json :as json]))
 
 (def blocks #{"scenarios" "measure" "bars" "limit" "chain" "compare" "range" "trajectory" "waterfall" "funnel" "controls" "ledger" "assumptions" "drivers"})
 
 (defn num [v]
   (cond (number? v) v
         (or (nil? v) (= v "?") (= (trim (str v)) "")) nil
-        (includes? v ".") (erlang/binary_to_float (trim v))
-        :else (erlang/binary_to_integer (trim v))))
+        (includes? v ".") (dossier.portable/parse-float (trim v))
+        :else (dossier.portable/parse-int (trim v))))
 (defn refs [s] (vec (filter (fn [x] (not (blank? x))) (map trim (String/split (or s "") ",")))))
 (defn- occurrences [s needle] (dec (count (String/split (str " " s " ") needle))))
 (defn- cols
@@ -42,7 +42,7 @@
 ;; ---- expressions: a closed arithmetic, never code
 
 (defn tokens [s]
-  (vec (map first (Regex/scan (Regex/compile! "(*UTF8)\\d+(?:[.,]\\d+)?|[A-Za-z_][A-Za-z0-9_]*|[-+*/×÷−(),]") (or s "")))))
+  (vec (map first (Regex/scan (Regex/compile! "\\d+(?:[.,]\\d+)?|[A-Za-z_][A-Za-z0-9_]*|[-+*/×÷−(),]" "u") (or s "")))))
 
 (declare parse-sum)
 (defn- parse-atom [ts i]
@@ -186,12 +186,12 @@
   "The document with each `#+import:` file read beside it. I/O; the host calls it."
   [doc dir]
   (let [files (keep (fn [l] (when-let [m (Regex/run (Regex/compile! "^#\\+import:\\s*(\\S+)") l)] (nth m 1))) (:lines doc))]
-    (assoc doc :imports (vec (for [f files :let [p (Path/join dir f)] :when (File/exists? p)] (o/read-doc (File/read! p)))))))
+    (assoc doc :imports (vec (for [f files :let [p (dossier.portable/path-join dir f)] :when (dossier.portable/file? p)] (o/read-doc (dossier.portable/read-file p)))))))
 
 (defn read-model
   "A notebook file's model with its imports, for executable cells."
   [path]
-  (model (with-imports (o/read-doc (File/read! path)) (Path/dirname path))))
+  (model (with-imports (o/read-doc (dossier.portable/read-file path)) (dossier.portable/path-dirname path))))
 
 ;; ---- numbers, in the reader's language
 
@@ -201,7 +201,7 @@
     (loop [s s out ""]
       (if (<= (count s) 3) (str s out) (recur (subs s 0 (- (count s) 3)) (str sep (subs s (- (count s) 3)) out))))))
 (defn- fixed [v d]
-  (let [neg (< v 0) p (reduce * 1 (repeat d 10)) n (erlang/round (* (abs v) p))
+  (let [neg (< v 0) p (reduce * 1 (repeat d 10)) n (dossier.portable/round (* (abs v) p))
         i (quot n p) f (rem n p)
         fs (if (= d 0) "" (let [s (str f) s (str (apply str (repeat (- d (count s)) "0")) s)
                                 s (String/replace s (Regex/compile! "0+$") "")]
@@ -209,8 +209,8 @@
     (str (if neg "−" "") (group i) fs)))
 (defn- sig2 [v]
   (if (= 0 v) 0
-    (let [p (math/pow 10 (- (erlang/floor (math/log10 (abs v))) 1))]
-      (* p (erlang/round (/ v p))))))
+    (let [p (dossier.portable/pow 10 (- (dossier.portable/floor (dossier.portable/log10 (abs v))) 1))]
+      (* p (dossier.portable/round (/ v p))))))
 (defn fmt
   "A value as the reader reads it. nil stays visibly unknown."
   [kind v]
@@ -226,7 +226,7 @@
                (cond (>= a 1000000) (str (fixed (/ v 1000000) 1) " MMAD")
                      (>= a 1000) (str (fixed (/ v 1000) 0) " kMAD")
                      :else (str (fixed v 0) " MAD")))
-      "hours" (str (fixed (if (>= (abs v) 100) (* 10 (erlang/round (/ v 10))) v) (if (< (abs v) 10) 1 0)) " h")
+      "hours" (str (fixed (if (>= (abs v) 100) (* 10 (dossier.portable/round (/ v 10))) v) (if (< (abs v) 10) 1 0)) " h")
       "days" (str (fixed v (if (< (abs v) 10) 1 0)) (if (fr?) " j" " d"))
       "months" (str (fixed v (if (< (abs v) 10) 1 0)) (if (fr?) " mois" " mo"))
       "count" (fixed v (if (< (abs v) 10) 1 0))

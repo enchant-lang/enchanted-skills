@@ -18,11 +18,11 @@
 ; `missing` beats the author declares.
 
 (ns dossier.film
-  (:require [bl.json :as json] [dossier.ui :as ui]))
+  (:require [dossier.portable] [bl.json :as json] [dossier.ui :as ui]))
 
 ;; ── reading a run (I/O, server side) ─────────────────────────────────────
 
-(defn- read-json [p] (when (File/regular? p) (try (json/decode (File/read! p)) (catch _ nil))))
+(defn- read-json [p] (when (dossier.portable/file? p) (try (json/decode (dossier.portable/read-file p)) (catch _ nil))))
 
 (defn enrich
   "The document with each film block's recorded run attached as :data."
@@ -30,11 +30,11 @@
   (assoc doc :nodes
     (vec (for [nd (:nodes doc)]
            (if (and (= :block (:t nd)) (= "film" (:lang nd)) (:run (:attrs nd)))
-             (let [root (Path/expand (Path/join dir (:run (:attrs nd))))]
-               (assoc nd :data {:run (read-json (Path/join root "run.json"))
-                                :failure (read-json (Path/join root "failure.json"))
-                                :film (read-json (Path/join root "film.json"))
-                                :manifest (read-json (Path/join root "film/manifest.json"))}))
+             (let [root (dossier.portable/path-expand (dossier.portable/path-join dir (:run (:attrs nd))))]
+               (assoc nd :data {:run (read-json (dossier.portable/path-join root "run.json"))
+                                :failure (read-json (dossier.portable/path-join root "failure.json"))
+                                :film (read-json (dossier.portable/path-join root "film.json"))
+                                :manifest (read-json (dossier.portable/path-join root "film/manifest.json"))}))
              nd)))))
 
 ;; ── reading a step ───────────────────────────────────────────────────────

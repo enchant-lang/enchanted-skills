@@ -1,0 +1,93 @@
+; dossier/codec.bl — edit what you see; write only the bytes behind it.
+;
+; PROTOTYPE (prototype/rich-edit). No per-block knowledge. A node's rendered
+; text runs are ALIGNED, in order, against the node's own source lines: each
+; run that occurs verbatim in the source (after the previous one) owns that
+; source range. Editing a run replaces exactly that range; every byte of
+; markup around it is untouched. Then the edit is VERIFIED by rendering again:
+; the edited run must read the new text and every other run must be as
+; before, otherwise the edit is refused (the editor falls back to a popover or
+; the source). That check is what makes it safe for blocks nobody has seen.
+(ns dossier.codec
+  (:require [dossier.org :as o] [dossier.page :as pg]))
+
+(defn- tag? [x] (and (vector? x) (keyword? (first x))))
+
+(defn text-runs
+  "Ordered [{:path [...] :text s}] of the string children of hiccup `h`
+   (skipping <svg>, <style>, <script>: drawn, not read)."
+  [h]
+  (let [out (atom [])]
+    (letfn [(walk [x path]
+              (cond
+                (string? x) (when-not (blank? x) (swap! out conj {:path path :text x}))
+                (tag? x) (when-not (contains? #{:svg :style :script} (keyword (first (split (name (first x)) "."))))
+                           (let [a (when (map? (second x)) (second x)) kids (if a (drop 2 x) (rest x))]
+                             (doseq [[i c] (map-indexed (fn [i c] [i c]) kids)] (walk c (conj path i)))))
+                (or (seq? x) (vector? x)) (doseq [[i c] (map-indexed (fn [i c] [i c]) x)] (walk c (conj path i)))
+                :else nil))]
+      (walk h []))
+    @out))
+
+(defn align
+  "Each run → its [from to] byte range in `src` (in order), or nil."
+  [src runs]
+  (loop [rs runs at 0 out []]
+    (if-let [r (first rs)]
+      (let [tail (erlang/binary_part src at (- (erlang/byte_size src) at))
+            hit (let [h (binary/match tail (:text r))]
+                  (if (= :nomatch h) h (tuple (+ at (erlang/element 1 h)) (erlang/element 2 h))))]
+        (if (= :nomatch hit)
+          (recur (rest rs) at (conj out (assoc r :src nil)))
+          (let [from (erlang/element 1 hit) to (+ from (erlang/element 2 hit))]
+            (recur (rest rs) to (conj out (assoc r :src [from to]))))))
+      out)))
+
+(defn node-source [lines nd] (join "\n" (subvec lines (:line nd) (:to nd))))
+
+(defn region-node
+  "Re-read ONE node's source on its own (render context already installed)
+   and place it back at `line`: cheap enough to verify every keystroke."
+  [src line]
+  (let [nodes (:nodes (o/read-doc src))]
+    (when (= 1 (count (remove #(= :props (:t %)) nodes)))
+      (-> (first (remove #(= :props (:t %)) nodes))
+          (update :line + line) (update :to + line)))))
+
+(defn edit-run
+  "Replace run `i` of node `nd` (of file `lines`) with `new-text`. Returns
+   {:ok true :src new-node-source :from :to} — the line range to replace —
+   or {:ok false :why …}. Verified by re-render."
+  [lines nd i new-text]
+  (let [line (:line nd)
+        src (node-source lines nd)
+        runs (align src (text-runs (pg/node-h nd)))
+        r (nth runs i nil)]
+    (cond
+      (nil? r) {:ok false :why :no-run}
+      (nil? (:src r)) {:ok false :why :unaligned}
+      :else
+      (let [[from to] (:src r)
+            src' (str (erlang/binary_part src 0 from) new-text (erlang/binary_part src to (- (erlang/byte_size src) to)))
+            nd' (region-node src' line)
+            runs' (when nd' (text-runs (pg/node-h nd')))
+            want (assoc (mapv :text runs) i new-text)]
+        (cond
+          (nil? nd') {:ok false :why :node-vanished}
+          (= want (mapv :text runs')) {:ok true :src src' :from (:line nd) :to (:to nd)}
+          :else {:ok false :why :render-mismatch})))))
+
+(defn measure-node
+  "Alignment coverage and a verified trial edit of every aligned run."
+  [lines nd trial]
+  (let [src (node-source lines nd)
+        runs (align src (text-runs (pg/node-h nd)))]
+    {:runs (count runs)
+     :aligned (count (filter :src runs))
+     :chars (reduce + 0 (map #(count (:text %)) runs))
+     :aligned-chars (reduce + 0 (map #(count (:text %)) (filter :src runs)))
+     :edits (when trial
+              (frequencies
+                (for [[i r] (take 6 (filter (fn [[_ r]] (:src r)) (map-indexed (fn [i r] [i r]) runs)))]
+                  (let [res (edit-run lines nd i (str (:text r) " ajouté"))]
+                    (if (:ok res) :ok (:why res))))))}))

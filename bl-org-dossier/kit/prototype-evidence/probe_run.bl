@@ -1,0 +1,12 @@
+(ns probe-run (:require [dossier.probe :as p] [bl.json :as json]))
+(def rows (atom []))
+(doseq [f (remove blank? (split (File/read! (System/get_env "CORPUS")) "\n"))]
+  (let [t0 (erlang/monotonic_time :millisecond)
+        r (try (p/probe-doc (File/read! f)) (catch e (println "FAIL" f (pr-str e)) []))]
+    (doseq [nd r]
+      (if (= :block (:t nd))
+        (do (doseq [a (:attrs nd)] (swap! rows conj {"f" f "kind" "attr" "lang" (:lang nd) "key" (:key a) "class" (name (:class a)) "err" (:error a) "paths" (count (:hits a))}))
+            (doseq [b (:body nd)] (swap! rows conj {"f" f "kind" "body" "lang" (:lang nd) "line" (:line b) "class" (name (:class b)) "err" (:error b) "paths" (count (:hits b))})))
+        (swap! rows conj {"f" f "kind" "prose" "lang" (name (:t nd)) "class" (name (:class (:r nd))) "err" (:error (:r nd))})))
+    (println "probed" (count r) "nodes" (- (erlang/monotonic_time :millisecond) t0) "ms" f)))
+(File/write! (System/get_env "OUT") (json/encode @rows))

@@ -1,0 +1,52 @@
+; js-overlay/dossier/portable.bl — the browser twin of kit/dossier/portable.bl.
+;
+; `bl js build … -p js-overlay -p kit` finds this file first, so the browser
+; build links these definitions; the BEAM never loads it. Same names, same
+; results, over JS globals. I/O is absent in a page: the server enriches nodes
+; (film, witness, notebook imports) before they reach the browser.
+(ns ^:js dossier.portable)
+
+(defn round [x] (.round js/Math x))
+(defn ceil [x] (.ceil js/Math x))
+(defn floor [x] (.floor js/Math x))
+(defn pow [x y] (.pow js/Math x y))
+(defn log10 [x] (.log10 js/Math x))
+(defn parse-int ([s] (js/parseInt s 10)) ([s base] (js/parseInt s base)))
+(defn parse-float [s] (js/parseFloat s))
+(defn hash
+  "NOT erlang:phash2 — a stable string hash, for cosmetic choices (avatar
+   tones). Anchors stored in files are computed on the server only."
+  [x]
+  (let [s (pr-str x)]
+    (loop [i 0 h 7]
+      (if (< i (.-length s))
+        (recur (inc i) (mod (+ (* h 31) (.charCodeAt s i)) 2147483647))
+        h))))
+(defn days [y m d]
+  ; gregorian days since year 0, as calendar:date_to_gregorian_days
+  (+ 719528 (.floor js/Math (/ (.UTC js/Date y (dec m) d) 86400000))))
+(defn re-split
+  "Regex.split: pieces between matches; with any opts (the kit only passes
+   include_captures) each whole match is kept between them. JS `split` would
+   splice in every capture GROUP instead, so walk the matches."
+  ([re s] (re-split re s nil))
+  ([re s opts]
+  (let [ms (.from js/Array (.matchAll s (.global re))) n (.-length ms) keep? (seq opts)]
+    (loop [k 0 at 0 out []]
+      (if (< k n)
+        (let [m (aget ms k) i (.-index m) w (aget m 0)]
+          (recur (inc k) (+ i (.-length w))
+                 (cond-> (conj out (.slice s at i)) keep? (conj w))))
+        (conj out (.slice s at)))))))
+(defn url-encode [s] (.replace (js/encodeURIComponent s) (js/RegExp. "%20" "g") "+"))
+(defn trim-trailing [s suffix]
+  (loop [s s] (if (and (seq suffix) (.endsWith s suffix)) (recur (.slice s 0 (- (.-length s) (.-length suffix)))) s)))
+(defn env [k] nil)
+(defn file? [p] false)
+(defn read-file [p] nil)
+(defn path-join [a b] (str a "/" b))
+(defn path-expand [p] p)
+(defn path-dirname [p] (let [i (.lastIndexOf p "/")] (if (pos? i) (.slice p 0 i) ".")))
+(def ^:private registry (atom {}))
+(defn registry-get [k] (get @registry k))
+(defn registry-put! [k v] (swap! registry assoc k v) nil)

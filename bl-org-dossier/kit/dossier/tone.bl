@@ -32,7 +32,7 @@
 ; Pure data in, data out: no theme is installed, no CSS is emitted. A design
 ; system maps these roles onto its own token names.
 
-(ns dossier.tone)
+(ns dossier.tone (:require [dossier.portable]))
 
 ;; ════════════════════════════════════════════════════════════════════
 ;; 1. COLOUR — sRGB hex ⇄ OKLCH, with chroma reduced into gamut
@@ -44,7 +44,7 @@
 
 (defn- cube [x] (* x x x))
 
-(defn- channel [h i] (erlang/binary_to_integer (subs h (+ 1 (* 2 i)) (+ 3 (* 2 i))) 16))
+(defn- channel [h i] (dossier.portable/parse-int (subs h (+ 1 (* 2 i)) (+ 3 (* 2 i))) 16))
 (defn rgb "A #rrggbb colour as [r g b] in 0–255." [h] [(channel h 0) (channel h 1) (channel h 2)])
 
 (defn- hex2 [n]
@@ -54,7 +54,7 @@
 (defn- to-linear [c]
   (let [c (/ c 255.0)] (if (<= c 0.04045) (/ c 12.92) (m :pow (/ (+ c 0.055) 1.055) 2.4))))
 (defn- from-linear [x]
-  (erlang/round (* 255 (clamp 0.0 1.0 (if (<= x 0.0031308) (* 12.92 x) (- (* 1.055 (m :pow x (/ 1.0 2.4))) 0.055))))))
+  (dossier.portable/round (* 255 (clamp 0.0 1.0 (if (<= x 0.0031308) (* 12.92 x) (- (* 1.055 (m :pow x (/ 1.0 2.4))) 0.055))))))
 
 (defn- oklab->linear [L a b]
   (let [l (cube (+ L (* 0.3963377774 a) (* 0.2158037573 b)))
@@ -104,8 +104,8 @@
   [a b]
   (let [la (luminance a) lb (luminance b)] (/ (+ (max la lb) 0.05) (+ (min la lb) 0.05))))
 
-(defn- round2 [x] (/ (erlang/round (* 100 x)) 100.0))
-(defn- round3 [x] (/ (erlang/round (* 1000 x)) 1000.0))
+(defn- round2 [x] (/ (dossier.portable/round (* 100 x)) 100.0))
+(defn- round3 [x] (/ (dossier.portable/round (* 1000 x)) 1000.0))
 
 ;; ════════════════════════════════════════════════════════════════════
 ;; 2. THE DARK THEME — roles, not swatches

@@ -1,0 +1,9 @@
+(ns parity-beam (:require [dossier.org :as o] [dossier.page :as pg] [live.hiccup :as h]))
+(def dir (System/get_env "OUT"))
+(doseq [[i f] (map-indexed (fn [i f] [i f]) (remove blank? (split (File/read! (System/get_env "CORPUS")) "\n")))]
+  (let [t0 (erlang/monotonic_time :millisecond)
+        r (try (apply str (map h/hiccup->html (pg/doc-h (o/read-doc (File/read! f)))))
+               (catch e (str "ERROR " (pr-str e))))
+        ms (- (erlang/monotonic_time :millisecond) t0)]
+    (File/write! (str dir "/" i ".html") r)
+    (println i ms (count r) f)))

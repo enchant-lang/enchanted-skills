@@ -92,6 +92,7 @@
     nil))
 
 (defn- node->h [nd] (review/decorate nd (node-tree nd)))
+(defn node-h "One node, decorated as on the page." [nd] (node->h nd))
 
 (defn- sections
   "Nodes split at level-1 headings: [{:head h :nodes […]} …]."
